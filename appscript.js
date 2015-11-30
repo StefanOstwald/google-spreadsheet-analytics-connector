@@ -148,7 +148,7 @@ gasc.namespace.createNs = function (namespace) {
 // ##############  gasc.env  ################
 // ##########################################
 
-gasc.env = function () {
+(function(undefined ){
 
     var currentEnvironment; // [production, testing]
 
@@ -171,7 +171,7 @@ gasc.env = function () {
     this.setupSpreadsheetEnvironment = function() {
         gasc.logger.useBetterLogOnOpenSpreadsheet();
     };
-};
+}).apply(gasc.namespace.createNs("gasc.env"));
 
 // ##########################################
 // ##############  gasc.logger ##############
