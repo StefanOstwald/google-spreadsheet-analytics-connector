@@ -38,7 +38,7 @@ function scheduleActiveRangeForDailyUpdate() {
     gasc.logger.useBetterLogOnOpenSpreadsheet();
     gasc.logger.log("scheduleActiveRangeForDailyUpdate started");
     var env = gasc.env.generateProductionEnvironment();
-    gasc.workflow.schedule.run(env);
+    gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env, env.getScheduledDataDailyUpdateSheet());
 }
 
 
@@ -525,6 +525,8 @@ gasc.model.PresParam = function (obj) {
     }
 
 
+
+
 }).apply(gasc.namespace.createNs("gasc.util"));
 
 
@@ -551,7 +553,6 @@ gasc.model.PresParam = function (obj) {
         env.activeRange = SpreadsheetApp.getActiveRange();
         gasc.logger.info("initializing  production environment successfull");
         env.scheduledDataDailyUpdateSheetName = "daily_updates";
-        env.mostLeftColumnIndexForScheduledDataDailyUpdateSheet = 1;
 
         return env;
     };
@@ -562,7 +563,6 @@ gasc.model.PresParam = function (obj) {
 // ##################################################
 // ##############  gasc.workflow.directQuery ########
 // ##################################################
-
 
 (function ( undefined ) {
 
@@ -580,7 +580,7 @@ gasc.model.PresParam = function (obj) {
             gasc.logger.info("analytics query received.");
             iQuerySet.output = gasc.view.generateOutputArray(iQuerySet.analyticsResponse,iQuerySet.config.presParam.showHeadersInResult);
 
-            gasc.spreadsheet.writeOutputOfQuerySetToSheet(querySets[i],env.activeSpreadsheet);
+            gasc.spreadsheet.writeOutputOfQuerySetToSheet(iQuerySet,env.activeSpreadsheet);
         }
     };
 
@@ -591,30 +591,86 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.workflow.schedule ###########
 // ##################################################
 
-
 (function ( undefined ) {
 
-    this.run = function(env) {
+    this.scheduleQueriesInActiveRangeToSheet = function(env, sheet) {
         gasc.logger.info("generating querySets for active range - start");
 
         var querySets = gasc.spreadsheet.getQuerySetsInRange(env.activeRange);
         gasc.logger.info("generating querySets for active range - finished");
+        removeConfigInEachQuerySet(querySets);
 
         var querySetsAsJson = gasc.view.transformArrayelementsToJson(querySets);
         var scheduledDataArray = gasc.view.transform1dArrayTo2dArrayWithDatapointsBelowEachOther(querySetsAsJson);
 
         gasc.spreadsheet.lock.wait(env.getLock());
 
-        var rowIndexOfFirstDatapoint = gasc.spreadsheet.addRows(env.getScheduledDataDailyUpdateSheet(),scheduledDataArray.length);
+        var rowIndexOfFirstDatapoint = gasc.spreadsheet.addRows(sheet,scheduledDataArray.length);
         gasc.logger.info("rows successfully added");
-        gasc.spreadsheet.writeDataToSheet(env.getScheduledDataDailyUpdateSheet(), rowIndexOfFirstDatapoint, env.mostLeftColumnIndexForScheduledDataDailyUpdateSheet, scheduledDataArray);
+        var firstColumn = 1;
+        gasc.spreadsheet.writeDataToSheet(sheet, rowIndexOfFirstDatapoint, firstColumn, scheduledDataArray);
         gasc.logger.info("rows successfully added");
 
         gasc.spreadsheet.lock.release(env.getLock());
-    };
 
+
+        function removeConfigInEachQuerySet(querySets) {
+            var i;
+            for (i=0;i<querySets.length;i++) {
+                delete querySets[i].config;
+            }
+        }
+    };
 }).apply(gasc.namespace.createNs("gasc.workflow.schedule"));
 
+
+// ##################################################
+// ##############  gasc.workflow.dailyTrigger ###########
+// ##################################################
+
+(function ( undefined ) {
+
+    /**
+     * Maximum execution duration for a trigger. Google sets this limit to 6min.
+     */
+    var TRIGGER_MAX_EXECUTION_TIME = 1000*60*6;
+
+    /**
+     * Since the execution time is limited a new query shall be started with this value in ms before the timeout.
+     */
+    var TRIGGER_MIN_EXECUTION_TIME_LEFT_FOR_QUERY_EXECUTION = 1000 * 20;
+
+
+    this.triggerExecuter = function(env, sheet) {
+        gasc.logger.info("trigger function started");
+
+        gasc.spreadsheet.lock.wait(env.getLock());
+        var querySetQueue = retrieveEntireQueue(sheet);
+        var handledQuerySets = 0;
+        var startDate = new Date();
+
+        while (moreQuerySetsAreAvailable(handledQuerySets,querySetQueue) && enoughTimeForAnotherQueryIsLeft(startDate)) {
+            var iQuerySet = gasc.spreadsheet.getQuerySet(env.activeSpreadsheet,querySetQueue[handledQuerySets].sheet,querySetQueue[handledQuerySets].row,querySetQueue[handledQuerySets].column);
+            gasc.logger.fine("iQuerySet: " + JSON.stringify(iQuerySet));
+            iQuerySet.analyticsResponse = gasc.analytics.executeAndRetryIfUnsuccessfull(iQuerySet.config.queryParam, env.apiFunctionCore);
+            gasc.logger.info("analytics query received.");
+            iQuerySet.output = gasc.view.generateOutputArray(iQuerySet.analyticsResponse,iQuerySet.config.presParam.showHeadersInResult);
+            gasc.spreadsheet.writeOutputOfQuerySetToSheet(iQuerySet,env.activeSpreadsheet);
+            handledQuerySets++;
+        }
+
+        gasc.spreadsheet.lock.release(env.getLock());
+
+        function enoughTimeForAnotherQueryIsLeft(startDate) {
+            var now = new Date();
+            return ((now.getTime() - startDate.getTime()) < TRIGGER_MAX_EXECUTION_TIME - TRIGGER_MIN_EXECUTION_TIME_LEFT_FOR_QUERY_EXECUTION);
+        }
+
+        function moreQuerySetsAreAvailable(handledQuerySets,querySetQueue) {
+            return handledQuerySets<querySetQueue.length;
+        }
+    };
+}).apply(gasc.namespace.createNs("gasc.workflow.dailyTrigger"));
 
 
 
@@ -768,7 +824,7 @@ gasc.model.PresParam = function (obj) {
 
         gasc.logger.info("starting to parse cell row: " + cell.getRow() + " column " + cell.getColumn());
 
-        // TODO is there a better why for creating type Config from json
+        // TODO is there a better waz for creating type Config from json
         var configFromCell = gasc.util.tryParseJSON(cell.getValue());
         iQuerySet.config = new gasc.model.Config(configFromCell);
 
@@ -811,6 +867,13 @@ gasc.model.PresParam = function (obj) {
             gasc.logger.info("Sheet with the name " + name + " was created.");
         }
         return sheet;
+    };
+
+    this.getQuerySet = function(activeSpreadsheet, sheetName, row, column) {
+        var sheet = activeSpreadsheet.getSheetByName(sheetName);
+        if (!sheet) throw "sheet with name " + sheetName + " was not found.";
+        var cell = sheet.getCell(row, column);
+        return getQuerySetFromCell(cell);
     };
 
 }).apply(gasc.namespace.createNs("gasc.spreadsheet"));
@@ -1405,16 +1468,7 @@ gasc.model.PresParam = function (obj) {
         }
     };
 
-    var dummySpreadsheet = {
-        getLastRow : function() {
-            return 0;
-        },
-
-        insertRowsBefore : function(a,b) {
-        }
-    };
-
-    var dummySheetWithScheduledData = {
+    var dummySheetWithQueue = {
         getRange : function(a,b) {
             return dummyRangeWithScheduledData;
         },
@@ -1482,23 +1536,23 @@ gasc.model.PresParam = function (obj) {
 
     var env = {
         getScheduledDataDailyUpdateSheet : function() {
-            return dummySheetWithScheduledData;
+            return dummySheetWithQueue;
         },
         getLock : function() {
             return dummyLock;
         },
         apiFunctionCore : apiMock,
-        activeSpreadsheet : dummySpreadsheet,
-        activeRange : dummyRangeWithQueryData,
-        mostLeftColumnIndexForScheduledDataDailyUpdateSheet : 1
+        activeSpreadsheet : dummySheetWithQuery,
+        activeRange : dummyRangeWithQueryData
     };
 
     this.basicTest = function() {
-        gasc.workflow.schedule.run(env);
+        gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env,dummySheetWithQueue);
         GSUnit.assertEquals(0,dummyLock.lockCount);
         GSUnit.assertNotEquals(dummyRangeWithScheduledData.scheduledData,"");
         GSUnit.assertEquals(1,dummyRangeWithScheduledData.numberOfDataWrites);
     };
+
 
 }).apply(gasc.namespace.createNs("gasc.test.workflow.schedule"));
 
