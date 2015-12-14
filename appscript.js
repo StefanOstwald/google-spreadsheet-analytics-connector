@@ -23,8 +23,18 @@ function onOpen() {
         .addItem('Run query in active range', 'directQuery')
         .addSeparator()
         .addSubMenu(ui.createMenu('debug')
-            .addItem('Schedule queries in active range to queue', 'scheduleActiveRangeForDailyUpdate'))
+            .addItem('Schedule queries in active range to queue', 'scheduleActiveRangeForDailyUpdate')
+            .addItem('trigger starting point', 'triggerStartingPointForProduction')
+        )
         .addToUi();
+}
+
+function triggerStartingPointForProduction() {
+    gasc.logger.useBetterLogOnOpenSpreadsheet();
+    gasc.logger.log("triggerStartingPointForProduction started");
+    var env = gasc.env.generateProductionEnvironment();
+    var queueSheet = env.getScheduledDataDailyUpdateSheet();
+    gasc.workflow.executeDailyQueries.triggerStartingPoint(env, queueSheet);
 }
 
 function directQuery() {
@@ -40,7 +50,6 @@ function scheduleActiveRangeForDailyUpdate() {
     var env = gasc.env.generateProductionEnvironment();
     gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env, env.getScheduledDataDailyUpdateSheet());
 }
-
 
 
 /**
@@ -69,8 +78,8 @@ function scheduleActiveRangeForDailyUpdate() {
  * @customfunction
  */
 
-function ANALYTICSB(analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults, showHeadersInResult,  samplingLevel, fields) {
-    var config =  gasc.customFunction.baseFunction(analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults,showHeadersInResult,  samplingLevel, fields);
+function ANALYTICSB(analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults, showHeadersInResult, samplingLevel, fields) {
+    var config = gasc.customFunction.baseFunction(analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults, showHeadersInResult, samplingLevel, fields);
     config.presParam.positionOfResults = gasc.model.PresParam.PositionOfResults.BELOW;
     return JSON.stringify(config);
 }
@@ -101,8 +110,8 @@ function ANALYTICSB(analyticsId, startDate, endDate, metrics, segment, filter, d
  * @customfunction
  */
 
-function ANALYTICSR(analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults,showHeadersInResult,  samplingLevel, fields) {
-    var config =  gasc.customFunction.baseFunction(analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults,showHeadersInResult,  samplingLevel, fields);
+function ANALYTICSR(analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults, showHeadersInResult, samplingLevel, fields) {
+    var config = gasc.customFunction.baseFunction(analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults, showHeadersInResult, samplingLevel, fields);
     config.presParam.positionOfResults = gasc.model.PresParam.PositionOfResults.RIGHT;
     return JSON.stringify(config);
 }
@@ -118,6 +127,7 @@ gasc.namespace = gasc.namespace || {};
  * Based up Kenneth Truyers' Work
  * http://www.kenneth-truyers.net/2013/04/27/javascript-namespaces-and-modules/
  */
+//FIXME what is the best practise to use namespaces?
 gasc.namespace.createNs = function (namespace) {
     var nsparts = namespace.split(".");
     var parent = gasc;
@@ -149,7 +159,7 @@ gasc.namespace.createNs = function (namespace) {
 // ##############  gasc.logger ##############
 // ##########################################
 
-(function(undefined ){
+(function (undefined) {
 
     var logFine = true;
     var logInfo = true;
@@ -171,8 +181,8 @@ gasc.namespace.createNs = function (namespace) {
 
     this.logError = function (e) {
         e = (typeof e === 'string') ? new Error(e) : e;
-        this.severe('%s: %s (line %s, file "%s"). Stack: "%s" . While processing %s.',e.name||'',
-            e.message||'', e.lineNumber||'', e.fileName||'', e.stack||'', e.processingMessage||'');
+        this.severe('%s: %s (line %s, file "%s"). Stack: "%s" . While processing %s.', e.name || '',
+            e.message || '', e.lineNumber || '', e.fileName || '', e.stack || '', e.processingMessage || '');
     };
 
     this.severe = function (data) {
@@ -181,19 +191,19 @@ gasc.namespace.createNs = function (namespace) {
         }
     };
 
-    this.log = function(data) {
+    this.log = function (data) {
         if (this.logInterface) {
             this.logInterface.log(data);
         }
     };
 
-    this.info = function(data) {
+    this.info = function (data) {
         if (logInfo) {
             this.log(data);
         }
     };
 
-    this.fine = function(data) {
+    this.fine = function (data) {
         if (logFine) {
             this.log(data);
         }
@@ -206,10 +216,10 @@ gasc.namespace.createNs = function (namespace) {
 // ##############  gasc.customFunction ##############
 // ##################################################
 
-(function(undefined ){
+(function (undefined) {
 
     // TODO ?? seperate function into smaller functions?
-    this.baseFunction = function (analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults, showHeadersInResult,  samplingLevel, fields) {
+    this.baseFunction = function (analyticsId, startDate, endDate, metrics, segment, filter, dimension, sort, startIndex, maxResults, showHeadersInResult, samplingLevel, fields) {
         gasc.logger.info('Running ANALYTICSB on: ' + new Date());
 
         var config = new gasc.model.Config();
@@ -253,7 +263,6 @@ gasc.model.Config = function (obj) {
         for (var prop in obj) this[prop] = obj[prop];
     }
 };
-
 
 
 // ##################################################
@@ -302,9 +311,9 @@ gasc.model.QuerySet = function (obj) {
     };
 
     this.queryType = {
-        DIRECT : "DIRECT",
-        SCHEDULED_ONCE : "SCHEDULED_ONCE",
-        SCHEDULED_DAILY : "SCHEDULED_DAILY"
+        DIRECT: "DIRECT",
+        SCHEDULED_ONCE: "SCHEDULED_ONCE",
+        SCHEDULED_DAILY: "SCHEDULED_DAILY"
     };
 
 
@@ -362,12 +371,12 @@ gasc.model.QueryParam = function (obj) {
 
 (function (undefined) {
 
-    this.prototype.setStartDateInGaFormat = function(startDate) {
-        this.startDate =  convertDateToGaFormatIfNeeded(startDate);
+    this.prototype.setStartDateInGaFormat = function (startDate) {
+        this.startDate = convertDateToGaFormatIfNeeded(startDate);
     };
 
-    this.prototype.setEndDateInGaFormat = function(startDate) {
-        this.endDate =  convertDateToGaFormatIfNeeded(startDate);
+    this.prototype.setEndDateInGaFormat = function (startDate) {
+        this.endDate = convertDateToGaFormatIfNeeded(startDate);
     };
 
     function convertDateToGaFormatIfNeeded(inputDate) {
@@ -398,41 +407,41 @@ gasc.model.QueryParam = function (obj) {
     }
 
 
-    this.prototype.setSegmentToValueOrDefault = function(segment) {
+    this.prototype.setSegmentToValueOrDefault = function (segment) {
         this.segment = segment || "";
     };
 
-    this.prototype.setFilterToValueOrDefault = function (filter){
+    this.prototype.setFilterToValueOrDefault = function (filter) {
         this.filter = filter || "";
     };
 
-    this.prototype.setDimensionToValueOrDefault = function(dimension) {
+    this.prototype.setDimensionToValueOrDefault = function (dimension) {
         this.dimension = dimension || "";
     };
 
-    this.prototype.setSortToValueOrDefault = function(sort) {
-        this.sort = sort  || "";
+    this.prototype.setSortToValueOrDefault = function (sort) {
+        this.sort = sort || "";
     };
 
-    this.prototype.setStartIndexToIntegerValueOrDefault = function(startIndex) {
+    this.prototype.setStartIndexToIntegerValueOrDefault = function (startIndex) {
         this.startIndex = parseInt(startIndex) || 0;
     };
 
-    this.prototype.setMaxResultsToIntegerValueOrDefault = function(maxResults) {
+    this.prototype.setMaxResultsToIntegerValueOrDefault = function (maxResults) {
         this.maxResults = parseInt(maxResults) || 1;
     };
 
-    this.prototype.setSamplingLevelToValueOrDefault = function(samplingLevel){
+    this.prototype.setSamplingLevelToValueOrDefault = function (samplingLevel) {
         //Todo convert to enum
         this.samplingLevel = samplingLevel || "";
     };
 
-    this.prototype.setFieldsToValueOrDefault = function(fields) {
+    this.prototype.setFieldsToValueOrDefault = function (fields) {
         this.fields = fields || "";
     };
 
 
-    this.prototype.genOptParamList = function() {
+    this.prototype.genOptParamList = function () {
         gasc.logger.info("generating optional parameter list");
 
         var optParam = {};
@@ -482,12 +491,12 @@ gasc.model.PresParam = function (obj) {
 (function (undefined) {
 
     this.PositionOfResults = {
-        RIGHT : "RIGHT",
-        BELOW : "BELOW"
+        RIGHT: "RIGHT",
+        BELOW: "BELOW"
     };
 
 
-    this.prototype.setShowHeadersInResultToValueOrDefault = function (showHeadersInResult){
+    this.prototype.setShowHeadersInResultToValueOrDefault = function (showHeadersInResult) {
         this.showHeadersInResult = showHeadersInResult || false;
     };
 
@@ -499,7 +508,7 @@ gasc.model.PresParam = function (obj) {
 // ##################################################
 
 
-(function ( undefined ) {
+(function (undefined) {
 
     /**
      * The function tests if the jsonString is valid.
@@ -519,12 +528,29 @@ gasc.model.PresParam = function (obj) {
                 return o;
             }
         }
-        catch (e) { }
+        catch (e) {
+        }
 
         return false;
-    }
+    };
 
-
+    this.dateIsBeforeTodayMidnightOrUndefined = function (date) {
+        // call setHours to take the time out of the comparison
+        if (!!date) {
+            // Get today's date
+            var now = new Date();
+            if (date <= now.setHours(0, 0, 0, 0)) {
+                gasc.logger.info("querySet was executed after today midnight.");
+                return true;
+            } else {
+                gasc.logger.info("querySet was not executed after today midnight.");
+                return false;
+            }
+        } else {
+            gasc.logger.info("querySet was never executed. Attribute lastExecuted is falsely.");
+            return true;
+        }
+    };
 
 
 }).apply(gasc.namespace.createNs("gasc.util"));
@@ -535,26 +561,31 @@ gasc.model.PresParam = function (obj) {
 // ##################################################
 
 
-(function ( undefined ) {
+(function (undefined) {
+
+    this.env = null;
 
     this.generateProductionEnvironment = function () {
-        var env = {
-            getScheduledDataDailyUpdateSheet : function() {
-                return gasc.spreadsheet.getOrCreateSheetByName(this.activeSpreadsheet,this.scheduledDataDailyUpdateSheetName);
-            },
-            getLock : function() {
-                return LockService.getScriptLock();
-            }
-        };
-        env.apiFunctionCore = Analytics.Data.Ga.get;
-        env.activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-        gasc.logger.info("activeSpreadsheet url: " + env.activeSpreadsheet.getUrl());
-        gasc.logger.info("retrieve activeRange");
-        env.activeRange = SpreadsheetApp.getActiveRange();
-        gasc.logger.info("initializing  production environment successfull");
-        env.scheduledDataDailyUpdateSheetName = "daily_updates";
 
-        return env;
+        if (!this.env) {
+            this.env = {
+                getScheduledDataDailyUpdateSheet: function () {
+                    return gasc.spreadsheet.getOrCreateSheetByName(this.activeSpreadsheet, this.scheduledDataDailyUpdateSheetName);
+                },
+                getLock: function () {
+                    return LockService.getScriptLock();
+                }
+            };
+            this.env.apiFunctionCore = Analytics.Data.Ga.get;
+            this.env.activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+            gasc.logger.info("activeSpreadsheet url: " + this.env.activeSpreadsheet.getUrl());
+            gasc.logger.info("retrieve activeRange");
+            this.env.activeRange = SpreadsheetApp.getActiveRange();
+            gasc.logger.info("initializing  production environment successfull");
+            this.env.scheduledDataDailyUpdateSheetName = "daily_updates";
+        }
+
+        return this.env;
     };
 
 }).apply(gasc.namespace.createNs("gasc.env"));
@@ -564,23 +595,23 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.workflow.directQuery ########
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
-    this.run = function (env){
+    this.run = function (env) {
         gasc.logger.info("generating querySets for active range - start");
         var querySets = gasc.spreadsheet.getQuerySetsInRange(env.activeRange);
         gasc.logger.info("generating querySets for active range - finished");
 
         var iQuerySet;
-        for (var i=0; i<this.querySets.length; i++) {
+        for (var i = 0; i < this.querySets.length; i++) {
             iQuerySet = this.querySets[i];
 
             gasc.logger.fine("iQuerySet: " + JSON.stringify(iQuerySet));
             iQuerySet.analyticsResponse = gasc.analytics.executeAndRetryIfUnsuccessfull(iQuerySet.config.queryParam, env.apiFunctionCore);
             gasc.logger.info("analytics query received.");
-            iQuerySet.output = gasc.view.generateOutputArray(iQuerySet.analyticsResponse,iQuerySet.config.presParam.showHeadersInResult);
+            iQuerySet.output = gasc.view.generateOutputArray(iQuerySet.analyticsResponse, iQuerySet.config.presParam.showHeadersInResult);
 
-            gasc.spreadsheet.writeOutputOfQuerySetToSheet(iQuerySet,env.activeSpreadsheet);
+            gasc.spreadsheet.writeOutputOfQuerySetToSheet(iQuerySet, env.activeRange.getSheet());
         }
     };
 
@@ -591,21 +622,26 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.workflow.schedule ###########
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
-    this.scheduleQueriesInActiveRangeToSheet = function(env, sheet) {
+    this.scheduleQueriesInActiveRangeToSheet = function (env, sheet) {
         gasc.logger.info("generating querySets for active range - start");
 
         var querySets = gasc.spreadsheet.getQuerySetsInRange(env.activeRange);
         gasc.logger.info("generating querySets for active range - finished");
         removeConfigInEachQuerySet(querySets);
 
-        var querySetsAsJson = gasc.view.transformArrayelementsToJson(querySets);
-        var scheduledDataArray = gasc.view.transform1dArrayTo2dArrayWithDatapointsBelowEachOther(querySetsAsJson);
 
         gasc.spreadsheet.lock.wait(env.getLock());
 
-        var rowIndexOfFirstDatapoint = gasc.spreadsheet.addRows(sheet,scheduledDataArray.length);
+        var rowIndexOfFirstDatapoint = gasc.spreadsheet.getFirstEmptyRow(sheet);
+        gasc.logger.info("first empty row in sheet " + sheet.name + ": " + rowIndexOfFirstDatapoint);
+
+        addLocationOfScheduledDataInScheduleSheetToEachQuerySet(querySets, rowIndexOfFirstDatapoint);
+        var querySetsAsJson = gasc.view.transformArrayelementsToJson(querySets);
+        var scheduledDataArray = gasc.view.transform1dArrayTo2dArrayWithDatapointsBelowEachOther(querySetsAsJson);
+
+        gasc.spreadsheet.addRows(sheet, scheduledDataArray.length);
         gasc.logger.info("rows successfully added");
         var firstColumn = 1;
         gasc.spreadsheet.writeDataToSheet(sheet, rowIndexOfFirstDatapoint, firstColumn, scheduledDataArray);
@@ -614,9 +650,16 @@ gasc.model.PresParam = function (obj) {
         gasc.spreadsheet.lock.release(env.getLock());
 
 
+        function addLocationOfScheduledDataInScheduleSheetToEachQuerySet(querySets, rowIndexOfFirstDatapoint) {
+            var i;
+            for (i = 0; i < querySets.length; i++) {
+                querySets[i].rowIndexOnScheduleSheet = rowIndexOfFirstDatapoint + i;
+            }
+        }
+
         function removeConfigInEachQuerySet(querySets) {
             var i;
-            for (i=0;i<querySets.length;i++) {
+            for (i = 0; i < querySets.length; i++) {
                 delete querySets[i].config;
             }
         }
@@ -625,15 +668,15 @@ gasc.model.PresParam = function (obj) {
 
 
 // ##################################################
-// ##############  gasc.workflow.dailyTrigger ###########
+// ######  gasc.workflow.executeDailyQueries ########
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     /**
      * Maximum execution duration for a trigger. Google sets this limit to 6min.
      */
-    var TRIGGER_MAX_EXECUTION_TIME = 1000*60*6;
+    var TRIGGER_MAX_EXECUTION_TIME = 1000 * 60 * 6;
 
     /**
      * Since the execution time is limited a new query shall be started with this value in ms before the timeout.
@@ -641,44 +684,65 @@ gasc.model.PresParam = function (obj) {
     var TRIGGER_MIN_EXECUTION_TIME_LEFT_FOR_QUERY_EXECUTION = 1000 * 20;
 
 
-    this.triggerExecuter = function(env, sheet) {
+    this.triggerStartingPoint = function (env, queueSheet) {
         gasc.logger.info("trigger function started");
+        gasc.logger.fine("queueSheet is defined: "+ !!queueSheet);
 
         gasc.spreadsheet.lock.wait(env.getLock());
-        var querySetQueue = retrieveEntireQueue(sheet);
-        var handledQuerySets = 0;
+        var queue = gasc.spreadsheet.retrieveEntireQueue(queueSheet);
+        var handledQueueElement = 0;
         var startDate = new Date();
 
-        while (moreQuerySetsAreAvailable(handledQuerySets,querySetQueue) && enoughTimeForAnotherQueryIsLeft(startDate)) {
-            var iQuerySet = gasc.spreadsheet.getQuerySet(env.activeSpreadsheet,querySetQueue[handledQuerySets].sheet,querySetQueue[handledQuerySets].row,querySetQueue[handledQuerySets].column);
+        while (furtherUnhandledQueueElementsAreAvailable(handledQueueElement, queue) && enoughTimeForOneQueueElementIsLeft(startDate)) {
+            var iQueueElement = queue[handledQueueElement];
+
+            var iQuerySet = gasc.spreadsheet.getQuerySet(env.activeSpreadsheet, iQueueElement.sheetName, iQueueElement.row, iQueueElement.column);
             gasc.logger.fine("iQuerySet: " + JSON.stringify(iQuerySet));
-            iQuerySet.analyticsResponse = gasc.analytics.executeAndRetryIfUnsuccessfull(iQuerySet.config.queryParam, env.apiFunctionCore);
-            gasc.logger.info("analytics query received.");
-            iQuerySet.output = gasc.view.generateOutputArray(iQuerySet.analyticsResponse,iQuerySet.config.presParam.showHeadersInResult);
-            gasc.spreadsheet.writeOutputOfQuerySetToSheet(iQuerySet,env.activeSpreadsheet);
-            handledQuerySets++;
+
+            if (queueElementShouldBeCalculated(iQueueElement)) {
+                iQuerySet.analyticsResponse = gasc.analytics.executeAndRetryIfUnsuccessfull(iQuerySet.config.queryParam, env.apiFunctionCore);
+                gasc.logger.info("analytics query received.");
+                iQuerySet.output = gasc.view.generateOutputArray(iQuerySet.analyticsResponse, iQuerySet.config.presParam.showHeadersInResult);
+                gasc.spreadsheet.writeOutputOfQuerySetToSheetIdentifiedByName(iQuerySet, iQueueElement.sheetName, env);
+
+                iQueueElement.lastExecuted = new Date();
+                saveQueueElementOnSheet(iQueueElement, queueSheet);
+            } else {
+                gasc.logger.info("iQuerySet was already executed later than today midnight so it is skipped");
+            }
+
+            handledQueueElement++;
         }
 
         gasc.spreadsheet.lock.release(env.getLock());
 
-        function enoughTimeForAnotherQueryIsLeft(startDate) {
+        function queueElementShouldBeCalculated(queueElement) {
+            return gasc.util.dateIsBeforeTodayMidnightOrUndefined(iQueueElement.lastExecuted);
+        }
+
+        function saveQueueElementOnSheet(queueElement, scheduleSheet) {
+            gasc.spreadsheet.updateQueueElement(queueElement, scheduleSheet);
+        }
+
+        function enoughTimeForOneQueueElementIsLeft(startDate) {
             var now = new Date();
             return ((now.getTime() - startDate.getTime()) < TRIGGER_MAX_EXECUTION_TIME - TRIGGER_MIN_EXECUTION_TIME_LEFT_FOR_QUERY_EXECUTION);
         }
 
-        function moreQuerySetsAreAvailable(handledQuerySets,querySetQueue) {
-            return handledQuerySets<querySetQueue.length;
+        function furtherUnhandledQueueElementsAreAvailable(numberOfHandledQueuePoints, queue) {
+            return numberOfHandledQueuePoints < queue.length;
         }
     };
-}).apply(gasc.namespace.createNs("gasc.workflow.dailyTrigger"));
 
+
+}).apply(gasc.namespace.createNs("gasc.workflow.executeDailyQueries"));
 
 
 // ##################################################
 // ##############  gasc.analytics ###################
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     var API_QUERY_SLEEP_MS_BETWEEN_TRIES = 1000;
     var API_QUERY_TRYS_BEFORE_ABORT = 5;
@@ -688,9 +752,9 @@ gasc.model.PresParam = function (obj) {
         var apiQuerySuccess = false;
         var apiResult;
 
-        while (apiQueryTries < API_QUERY_TRYS_BEFORE_ABORT) {
+        while (apiQueryTries < API_QUERY_TRYS_BEFORE_ABORT && !apiQuerySuccess) {
             try {
-                gasc.logger.info("starting query to Google Analytics for the "+apiQueryTries+". time");
+                gasc.logger.info("starting query to Google Analytics for the " + apiQueryTries + ". time");
                 apiResult = gasc.analytics.executeQuery(queryParam, apiFunction);
                 gasc.logger.info("query was successfull");
                 apiQuerySuccess = true;
@@ -706,6 +770,7 @@ gasc.model.PresParam = function (obj) {
             throw "Analytics request failed " + apiQueryTries + " times. It is not further tried for this request.";
         }
         return apiResult;
+
     };
 
 
@@ -728,12 +793,11 @@ gasc.model.PresParam = function (obj) {
 }).apply(gasc.namespace.createNs("gasc.analytics"));
 
 
-
 // ##################################################
 // ##############  gasc.view ########################
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     function generateHeaderRow(apiResponse) {
         var headerRow = [];
@@ -744,7 +808,7 @@ gasc.model.PresParam = function (obj) {
     }
 
 
-    this.generateOutputArray = function (apiResponse,showHeadersInResult) {
+    this.generateOutputArray = function (apiResponse, showHeadersInResult) {
         if (showHeadersInResult) {
             gasc.logger.info("Header is generated in output array");
             var output = [];
@@ -756,18 +820,18 @@ gasc.model.PresParam = function (obj) {
         }
     };
 
-    this.transform1dArrayTo2dArrayWithDatapointsBelowEachOther = function(oneDimArray) {
+    this.transform1dArrayTo2dArrayWithDatapointsBelowEachOther = function (oneDimArray) {
         var newArr = [];
-        while(oneDimArray.length) {
-            newArr.push(oneDimArray.splice(0,1));
+        while (oneDimArray.length) {
+            newArr.push(oneDimArray.splice(0, 1));
         }
         return newArr;
     };
 
-    this.transformArrayelementsToJson= function(origArray) {
+    this.transformArrayelementsToJson = function (origArray) {
         var jsonArray = [];
         var iIndex;
-        for (iIndex = 0; iIndex < origArray.length;iIndex++ ) {
+        for (iIndex = 0; iIndex < origArray.length; iIndex++) {
             jsonArray.push(JSON.stringify(origArray[iIndex]));
         }
         return jsonArray;
@@ -780,7 +844,8 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.spreadsheet #################
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
+
 
     /**
      * writes an 2d array of data on a sheet.
@@ -789,28 +854,32 @@ gasc.model.PresParam = function (obj) {
      * @param leftColumnIndex the most left column in which the data shall be written
      * @param data has to be a 2 dimensional rectangular grid of values
      */
-    this.writeDataToSheet = function(sheet, firstRowIndex, leftColumnIndex, data) {
+    this.writeDataToSheet = function (sheet, firstRowIndex, leftColumnIndex, data) {
         var rangeOnSheetToBeFilled = sheet.getRange(firstRowIndex, leftColumnIndex, data.length, data[0].length);
         rangeOnSheetToBeFilled.setValue(data);
     };
 
-    this.writeOutputOfQuerySetToSheet = function (querySet, spreadsheet) {
-        var sheet = spreadsheet.getSheetByName(querySets.sheet);
-        this.writeDataToSheet(sheet,querySets.getOutputStartRow(), querySets.getOutputStartColumn(),querySets.output);
+    this.writeOutputOfQuerySetToSheet = function (querySet, sheet) {
+        this.writeDataToSheet(sheet, querySet.getOutputStartRow(), querySet.getOutputStartColumn(), querySet.output);
+    };
+
+    this.writeOutputOfQuerySetToSheetIdentifiedByName = function (querySet, sheetName, env) {
+        var sheet = env.activeSpreadsheet.getSheetByName(sheetName);
+        this.writeOutputOfQuerySetToSheet(querySet, sheet);
     };
 
     this.getQuerySetsInRange = function (range) {
         var querySets = [];
 
-        for (var iRow=1; iRow <= range.getNumRows(); iRow++) {
-            for (var iColumn=1; iColumn <= range.getNumColumns(); iColumn++) {
-                gasc.logger.info("starting to verify if range["+iRow+","+iColumn+"] contains a valid QuerySet");
-                var iQuerySet = this.getQuerySetFromCell(range.getCell(iRow,iColumn));
+        for (var iRow = 1; iRow <= range.getNumRows(); iRow++) {
+            for (var iColumn = 1; iColumn <= range.getNumColumns(); iColumn++) {
+                gasc.logger.info("starting to verify if range[" + iRow + "," + iColumn + "] contains a valid QuerySet");
+                var iQuerySet = this.getQuerySetFromCell(range.getCell(iRow, iColumn));
                 if (iQuerySet.containsValidConfig()) {
-                    gasc.logger.info("valid config found in range["+iRow+","+iColumn+"]");
+                    gasc.logger.info("valid config found in range[" + iRow + "," + iColumn + "]");
                     querySets.push(iQuerySet);
                 } else {
-                    gasc.logger.info("no valid config found in range["+iRow+","+iColumn+"]");
+                    gasc.logger.info("no valid config found in range[" + iRow + "," + iColumn + "]");
                 }
             }
         }
@@ -818,13 +887,13 @@ gasc.model.PresParam = function (obj) {
     };
 
 
-    this.getQuerySetFromCell = function (cell){
+    this.getQuerySetFromCell = function (cell) {
         gasc.logger.info("initializing new querySets");
         var iQuerySet = new gasc.model.QuerySet();
 
         gasc.logger.info("starting to parse cell row: " + cell.getRow() + " column " + cell.getColumn());
 
-        // TODO is there a better waz for creating type Config from json
+        // TODO is there a better way for creating type Config from json
         var configFromCell = gasc.util.tryParseJSON(cell.getValue());
         iQuerySet.config = new gasc.model.Config(configFromCell);
 
@@ -834,7 +903,7 @@ gasc.model.PresParam = function (obj) {
         var presParam = new gasc.model.PresParam(configFromCell.presParam);
         iQuerySet.config.presParam = presParam;
 
-        iQuerySet.sheet = cell.getSheet().getName();
+        iQuerySet.sheetName = cell.getSheet().getName();
         iQuerySet.row = cell.getRow();
         iQuerySet.column = cell.getColumn();
 
@@ -851,13 +920,17 @@ gasc.model.PresParam = function (obj) {
     this.addRows = function (sheet, numberOfRows) {
         var firstAddedRowIndex = sheet.getLastRow() + 1;
         gasc.logger.info("Last row with content in sheet:" + firstAddedRowIndex);
-        sheet.insertRowsBefore(firstAddedRowIndex,numberOfRows);
+        sheet.insertRowsBefore(firstAddedRowIndex, numberOfRows);
         gasc.logger.info("Rows in sheet successfully added. Index of first added row is " + firstAddedRowIndex);
         return firstAddedRowIndex;
     };
 
+    this.getFirstEmptyRow = function (sheet) {
+        return sheet.getLastRow() + 1;
+    };
 
-    this.getOrCreateSheetByName = function(activeSpreadsheet, name) {
+
+    this.getOrCreateSheetByName = function (activeSpreadsheet, name) {
         var sheet = activeSpreadsheet.getSheetByName(name);
         if (sheet) {
             gasc.logger.info("Sheet with the name " + name + " was found.");
@@ -869,12 +942,47 @@ gasc.model.PresParam = function (obj) {
         return sheet;
     };
 
-    this.getQuerySet = function(activeSpreadsheet, sheetName, row, column) {
+    this.getQuerySet = function (activeSpreadsheet, sheetName, row, column) {
         var sheet = activeSpreadsheet.getSheetByName(sheetName);
         if (!sheet) throw "sheet with name " + sheetName + " was not found.";
-        var cell = sheet.getCell(row, column);
-        return getQuerySetFromCell(cell);
+        var cell = sheet.getRange(row, column);
+        return this.getQuerySetFromCell(cell);
     };
+
+    this.updateQueueElement = function (queueElement, sheetContainingQueue) {
+        var columnIndex = 1;
+        var cell = sheetContainingQueue.getRange(queueElement.rowIndexOnScheduleSheet, columnIndex);
+        cell.setValue(JSON.stringify(queueElement));
+    };
+
+
+    this.retrieveEntireQueue = function (sheet) {
+
+        function getRangeOfEntireQueue(sheet) {
+            var numberOfColumns = 1;
+            var firstRowIndex = 1;
+            var firstColumnIndex = 1;
+            return sheet.getRange(firstRowIndex, firstColumnIndex, sheet.getLastRow(), numberOfColumns);
+        }
+
+        function generateQueueElementFromCell(cell) {
+            return JSON.parse(cell.getValue());
+        }
+
+        gasc.logger.fine("retrieveEntireQueue started");
+        var queueRange = getRangeOfEntireQueue(sheet);
+
+        gasc.logger.fine("queueRange is defined: " + !!queueRange);
+        var iRowIndex;
+        var columnIndex = 1;
+        var queue = [];
+        for (iRowIndex = 1; iRowIndex <= queueRange.getNumRows(); iRowIndex++) {
+            var iCell = queueRange.getCell(iRowIndex, columnIndex);
+            queue.push(generateQueueElementFromCell(iCell));
+        }
+        gasc.logger.fine("queue was successfully retrieved");
+        return queue;
+    }
 
 }).apply(gasc.namespace.createNs("gasc.spreadsheet"));
 
@@ -883,27 +991,27 @@ gasc.model.PresParam = function (obj) {
 // ###########  gasc.spreadsheet.lock  ##############
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
-   this.TRIGGER_LOCK_TIMEOUT = 5000;
+    this.TRIGGER_LOCK_TIMEOUT = 5000;
 
-   this.wait = function (lock) {
+    this.wait = function (lock) {
         var result = lock.waitLock(this.TRIGGER_LOCK_TIMEOUT);
         gasc.logger.info("lock is set");
         return result;
     };
 
-   this.attempt = function (lock) {
-       var result = lock.tryLock(this.TRIGGER_LOCK_TIMEOUT);
-       gasc.logger.info("lock is set");
-       return result;
-   };
+    this.attempt = function (lock) {
+        var result = lock.tryLock(this.TRIGGER_LOCK_TIMEOUT);
+        gasc.logger.info("lock is set");
+        return result;
+    };
 
-   this.release = function(lock) {
-       var result = lock.releaseLock();
-       gasc.logger.info("lock released");
-       return result;
-   };
+    this.release = function (lock) {
+        var result = lock.releaseLock();
+        gasc.logger.info("lock released");
+        return result;
+    };
 
 }).apply(gasc.namespace.createNs("gasc.spreadsheet.lock"));
 
@@ -912,12 +1020,12 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.test ########################
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     this.analyticsIdForTesting = "ga:53113218";
 
     this.runAllTests = function () {
-        gasc.logger.log("########## Start: "+new Date()+" ##########");
+        gasc.logger.log("########## Start: " + new Date() + " ##########");
 
         gasc.test.namespaceCreator.createNsTestWithoutHierarchy();
         gasc.test.namespaceCreator.createNsTestWithHierarchy();
@@ -947,6 +1055,11 @@ gasc.model.PresParam = function (obj) {
         gasc.test.view.generateOutputArrayTestHeadlineYesDimensionAllOf2();
         gasc.test.view.transform1dArrayTo2dArrayWithDatapointsBelowEachOther();
         gasc.test.workflow.schedule.basicTest();
+        gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfYesterday();
+        gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfEarlierToday();
+        gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfTomorrow();
+        gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfUndefined();
+        gasc.test.workflow.executeDailyQueries.normalExecution();
 
         gasc.test.analytics.analyticsAPITest(this.analyticsIdForTesting);
 
@@ -960,18 +1073,59 @@ gasc.model.PresParam = function (obj) {
 }).apply(gasc.namespace.createNs("gasc.test"));
 
 
+// ##################################################
+// ##############  gasc.test.mock ###################
+// ##################################################
+
+(function (undefined) {
+
+    // FIXME what are the best practices on where to define "classes". especially the external functions look ugly
+    this.DummyLock = function () {
+        this.lockCount = 0;
+    };
+
+    this.DummyLock.prototype.waitLock = function () {
+        this.lockCount++;
+    };
+
+    this.DummyLock.prototype.tryLock = function () {
+        this.lockCount++;
+    };
+
+    this.DummyLock.prototype.releaseLock = function () {
+        this.lockCount--;
+    };
+
+
+    this.DummyRange = function () {
+        // FIXME are these two attributes part of a new created object? Does "this" refer to the object or to the namespace gasc.test.mock?
+        this.numberOfWrites = 0;
+        this.data = "";
+    };
+
+    this.DummyRange.prototype.setValue = function (data) {
+        this.scheduledData = data;
+        this.numberOfWrites++;
+    };
+
+    this.DummyRange.prototype.getCell = function () {
+        return this;
+    };
+
+}).apply(gasc.namespace.createNs("gasc.test.mock"));
+
 
 // ##################################################
 // ##############  gasc.test.logger #################
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
-    this.loggerTests = function() {
+    this.loggerTests = function () {
         gasc.logger.info("Test gasc.test.logger.loggerTest started");
         var testLogInterface = {
             log: function (data) {
-                GSUnit.assertContains(" Stack: ",data);
+                GSUnit.assertContains(" Stack: ", data);
             }
         };
 
@@ -988,16 +1142,14 @@ gasc.model.PresParam = function (obj) {
 }).apply(gasc.namespace.createNs("gasc.test.logger"));
 
 
-
-
 // ##################################################
 // ##############  gasc.test.util #################
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     // TODO Is test namespace good or is a seperate test namespace in the namespace it verifies a better option
-    this.tryParseJSONTestInvalid = function() {
+    this.tryParseJSONTestInvalid = function () {
         //TODO refactor into seperate functions?
         var wrongJSON1 = "asdf";
         GSUnit.assertEvaluatesToFalse(gasc.util.tryParseJSON(wrongJSON1));
@@ -1016,7 +1168,7 @@ gasc.model.PresParam = function (obj) {
 
     };
 
-    this.tryParseJSONTestValid = function() {
+    this.tryParseJSONTestValid = function () {
         var validJSON1 = "{\"employees\":[{\"firstName\":\"John\",\"lastName\":\"Doe\"},{\"firstName\":\"Anna\",\"lastName\":\"Smith\"},{\"firstName\":\"Peter\",\"lastName\":\"Jones\"}]}";
         GSUnit.assertEvaluatesToTrue(gasc.util.tryParseJSON(validJSON1));
     };
@@ -1028,7 +1180,7 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.test.spreadsheet ############
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
     this.getQuerySetFromCellTest = function () {
         var analyticsID = "ga:1111111";
         var row = 1;
@@ -1058,10 +1210,10 @@ gasc.model.PresParam = function (obj) {
 
         var querySet = gasc.spreadsheet.getQuerySetFromCell(testCell);
         GSUnit.assertEquals(analyticsID, querySet.config.queryParam.analyticsId);
-        GSUnit.assertEquals(showHeadersInResult, querySet.config.presParam.showHeadersInResult );
+        GSUnit.assertEquals(showHeadersInResult, querySet.config.presParam.showHeadersInResult);
         GSUnit.assertEquals(row, querySet.row);
         GSUnit.assertEquals(column, querySet.column);
-        GSUnit.assertEquals(sheetName, querySet.sheet);
+        GSUnit.assertEquals(sheetName, querySet.sheetName);
         GSUnit.assertTrue(querySet.containsValidConfig());
     };
 
@@ -1071,7 +1223,7 @@ gasc.model.PresParam = function (obj) {
     }
 
     function replaceGetQuerySetFromCellWithValidConfigMockup() {
-        gasc.spreadsheet.getQuerySetFromCell = function() {
+        gasc.spreadsheet.getQuerySetFromCell = function () {
             var iQuerySet = new gasc.model.QuerySet();
             iQuerySet.config = generateConfig();
             return iQuerySet;
@@ -1079,7 +1231,7 @@ gasc.model.PresParam = function (obj) {
     }
 
     function replaceGetQuerySetFromCellWithInvalidConfigMockup() {
-        gasc.spreadsheet.getQuerySetFromCell = function() {
+        gasc.spreadsheet.getQuerySetFromCell = function () {
             var iQuerySet = new gasc.model.QuerySet();
             iQuerySet.config = "";
             return iQuerySet;
@@ -1088,79 +1240,79 @@ gasc.model.PresParam = function (obj) {
 
     function generateDummyRange() {
         return {
-            getNumRows : function() {
+            getNumRows: function () {
                 return 1;
             },
-            getNumColumns : function () {
+            getNumColumns: function () {
                 return 1;
             },
-            getCell : function() {
+            getCell: function () {
                 return true;
             }
         };
     }
 
-    this.getQuerySetsInRangeTestValidConfig = function() {
+    this.getQuerySetsInRangeTestValidConfig = function () {
 
         var getQuerySetFromCellFunctionBackup = gasc.spreadsheet.getQuerySetFromCell;
         replaceGetQuerySetFromCellWithValidConfigMockup();
 
         var querySets = gasc.spreadsheet.getQuerySetsInRange(generateDummyRange());
 
-        GSUnit.assertEquals(querySets.length,1);
-        GSUnit.assertEquals(querySets[0].config.toString(),generateConfig().toString());
+        GSUnit.assertEquals(querySets.length, 1);
+        GSUnit.assertEquals(querySets[0].config.toString(), generateConfig().toString());
 
         // restore normal function
         gasc.spreadsheet.getQuerySetFromCell = getQuerySetFromCellFunctionBackup;
     };
 
-    this.getQuerySetsInRangeTestInvalidConfig = function() {
+    this.getQuerySetsInRangeTestInvalidConfig = function () {
 
         var getQuerySetFromCellFunctionBackup = gasc.spreadsheet.getQuerySetFromCell;
         replaceGetQuerySetFromCellWithInvalidConfigMockup();
 
         var querySets = gasc.spreadsheet.getQuerySetsInRange(generateDummyRange());
 
-        GSUnit.assertEquals(querySets.length,0);
+        GSUnit.assertEquals(querySets.length, 0);
 
         // restore normal function
         gasc.spreadsheet.getQuerySetFromCell = getQuerySetFromCellFunctionBackup;
     };
 
-    this.getOrCreateSheetByNameCaseGet = function() {
+    this.getOrCreateSheetByNameCaseGet = function () {
         var sheetName = 'sheetname';
         var sheetInSpreadsheet = {
-            name:sheetName,
-            isNew : false
+            name: sheetName,
+            isNew: false
         };
         var dummySpreadsheet = {
-            getSheetByName : function() {
+            getSheetByName: function () {
                 return sheetInSpreadsheet;
             }
         };
 
-        var returnedSheet = gasc.spreadsheet.getOrCreateSheetByName(dummySpreadsheet,sheetName);
-        GSUnit.assertEquals(returnedSheet.name,sheetName);
+        var returnedSheet = gasc.spreadsheet.getOrCreateSheetByName(dummySpreadsheet, sheetName);
+        GSUnit.assertEquals(returnedSheet.name, sheetName);
         GSUnit.assertFalse(returnedSheet.isNew);
     };
 
-    this.getOrCreateSheetByNameCaseCreate = function() {
+    this.getOrCreateSheetByNameCaseCreate = function () {
         var sheetName = 'sheetname';
         var sheetInSpreadsheet = {
-            name:sheetName,
-            isNew : true
+            name: sheetName,
+            isNew: true
         };
         var dummySpreadsheet = {
-            getSheetByName : function() {
+            getSheetByName: function () {
                 return null;
             },
-            insertSheet : function() {
+            insertSheet: function () {
                 return sheetInSpreadsheet;
             }
         };
 
-        var returnedSheet = gasc.spreadsheet.getOrCreateSheetByName(dummySpreadsheet,sheetName);
-        GSUnit.assertEquals(returnedSheet.name,sheetName);
+        var returnedSheet = gasc.spreadsheet.getOrCreateSheetByName(dummySpreadsheet, sheetName);
+        GSUnit.assertEquals(returnedSheet.name, sheetName);
         GSUnit.assertTrue(returnedSheet.isNew);
     };
 
@@ -1170,8 +1322,8 @@ gasc.model.PresParam = function (obj) {
 // ############  gasc.test.namespaceCreator  ########
 // ##################################################
 
-(function ( undefined ) {
-    this.createNsTestWithoutHierarchy = function() {
+(function (undefined) {
+    this.createNsTestWithoutHierarchy = function () {
         var namespaceNameWithoutHierarchy = "gasc.testspace";
 
         var testspace;
@@ -1181,7 +1333,7 @@ gasc.model.PresParam = function (obj) {
         GSUnit.assertNotUndefined(gasc.testspace);
     };
 
-    this.createNsTestWithHierarchy = function() {
+    this.createNsTestWithHierarchy = function () {
         var namespaceNameWithHierarchy = "gasc.testspace2.test";
 
         // TODO use variable for testspace variable name
@@ -1199,31 +1351,31 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.test.customFunction #########
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
-    this.analyticsBTest = function() {
+    this.analyticsBTest = function () {
         gasc.logger.info("Test gasc.test.customFunction.analyticsBTest started - test custom spreadsheet function ANALYTICSB with mandatory attributes");
         var config = customFunctionBaseTest(ANALYTICSB);
-        GSUnit.assertContains("\"positionOfResults\":\"" + gasc.model.PresParam.PositionOfResults.BELOW + "\"",config);
-        GSUnit.assertContains("\"showHeadersInResult\":false",config);
+        GSUnit.assertContains("\"positionOfResults\":\"" + gasc.model.PresParam.PositionOfResults.BELOW + "\"", config);
+        GSUnit.assertContains("\"showHeadersInResult\":false", config);
     };
 
-    this.analyticsRTest = function() {
+    this.analyticsRTest = function () {
         gasc.logger.info("Test gasc.test.customFunction.analyticsRTest started - test custom spreadsheet function ANALYTICSR with mandatory attributes");
         var config = customFunctionBaseTest(ANALYTICSR);
-        GSUnit.assertContains("\"positionOfResults\":\"" + gasc.model.PresParam.PositionOfResults.RIGHT + "\"",config);
+        GSUnit.assertContains("\"positionOfResults\":\"" + gasc.model.PresParam.PositionOfResults.RIGHT + "\"", config);
     };
 
-    this.analyticsBShowHeadersInResultTrue = function() {
+    this.analyticsBShowHeadersInResultTrue = function () {
         gasc.logger.info("Test gasc.test.customFunction.analyticsBShowHeadersInResultTrue started - ANALYTICSB saves ShowHeadersInResult true");
         var config = ANALYTICSB("ga:1234", "2015-01-01", "2015-01-02", "ga:sessions", "", "", "", "", 0, 1, true);
-        GSUnit.assertContains("\"showHeadersInResult\":true",config);
+        GSUnit.assertContains("\"showHeadersInResult\":true", config);
     };
 
-    this.analyticsBShowHeadersInResultFalse = function() {
+    this.analyticsBShowHeadersInResultFalse = function () {
         gasc.logger.info("Test gasc.test.customFunction.analyticsBShowHeadersInResultFalse started - ANALYTICSB saves ShowHeadersInResult false");
         var config = ANALYTICSB("ga:1234", "2015-01-01", "2015-01-02", "ga:sessions", "", "", "", "", 0, 1, false);
-        GSUnit.assertContains("\"showHeadersInResult\":false",config);
+        GSUnit.assertContains("\"showHeadersInResult\":false", config);
     };
 
     function customFunctionBaseTest(formulaFunction) {
@@ -1233,10 +1385,10 @@ gasc.model.PresParam = function (obj) {
         var metric = "ga:pageViews";
         var config = formulaFunction(analyticsId, startDate, endDate, metric);
 
-        GSUnit.assertContains(analyticsId,config);
-        GSUnit.assertContains(startDate,config);
-        GSUnit.assertContains(metric,config);
-        GSUnit.assertContains("2015-01-02",config);
+        GSUnit.assertContains(analyticsId, config);
+        GSUnit.assertContains(startDate, config);
+        GSUnit.assertContains(metric, config);
+        GSUnit.assertContains("2015-01-02", config);
 
         return config;
     }
@@ -1247,7 +1399,7 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.test.model.QuerySet #########
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     this.containsValidConfigTestFalseSimple = function () {
         var querySet = new gasc.model.QuerySet();
@@ -1274,7 +1426,7 @@ gasc.model.PresParam = function (obj) {
         GSUnit.assertEquals(querySet.row, querySet.getOutputStartRow());
     };
 
-    this.getOutputStartColumnTestResultsBelow = function (){
+    this.getOutputStartColumnTestResultsBelow = function () {
         var querySet = new gasc.model.QuerySet();
         querySet.config = new gasc.model.Config();
         querySet.column = 1;
@@ -1283,7 +1435,7 @@ gasc.model.PresParam = function (obj) {
         GSUnit.assertEquals(querySet.column, querySet.getOutputStartColumn());
     };
 
-    this.getOutputStartColumnTestResultsRight = function (){
+    this.getOutputStartColumnTestResultsRight = function () {
         var querySet = new gasc.model.QuerySet();
         querySet.config = new gasc.model.Config();
         querySet.column = 1;
@@ -1299,25 +1451,24 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.test.model.QueryParam #########
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     this.genOptParamListTest = function () {
         var queryParam = new gasc.model.QueryParam();
         queryParam.startIndex = 1;
 
         var queryParamJson = JSON.stringify(queryParam.genOptParamList());
-        GSUnit.assertContains("start-index",queryParamJson);
+        GSUnit.assertContains("start-index", queryParamJson);
     }
 
 }).apply(gasc.namespace.createNs("gasc.test.model.QueryParam"));
-
 
 
 // ##################################################
 // ##############  gasc.test.analytics ###################
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     var apiReturn0Dimension = "{\"totalResults\":1,\"query\":{\"metrics\":[\"ga:sessions\"],\"max-results\":1,\"end-date\":\"2015-01-28\",\"ids\":\"ga:123\",\"start-index\":1,\"start-date\":\"2015-01-01\"},\"kind\":\"analytics#gaData\",\"columnHeaders\":[{\"dataType\":\"INTEGER\",\"columnType\":\"METRIC\",\"name\":\"ga:sessions\"}],\"id\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&metrics=ga:sessions&start-date=2015-01-01&end-date=2015-01-28&max-results=1\",\"totalsForAllResults\":{\"ga:sessions\":\"20\"},\"itemsPerPage\":1,\"profileInfo\":{\"accountId\":\"123\",\"webPropertyId\":\"UA-123-1\",\"tableId\":\"ga:123\",\"profileId\":\"123\",\"profileName\":\"example\",\"internalWebPropertyId\":\"123\"},\"selfLink\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&metrics=ga:sessions&start-date=2015-01-01&end-date=2015-01-28&max-results=1\",\"rows\":[[\"5555\"]],\"containsSampledData\":false}";
     var apiReturn1Dimension = "{\"totalResults\":222,\"query\":{\"metrics\":[\"ga:sessions\",\"ga:pageViews\"],\"max-results\":1,\"dimensions\":\"ga:sourceMedium\",\"end-date\":\"2015-01-28\",\"ids\":\"ga:123\",\"start-index\":1,\"start-date\":\"2015-01-01\"},\"kind\":\"analytics#gaData\",\"columnHeaders\":[{\"dataType\":\"STRING\",\"columnType\":\"DIMENSION\",\"name\":\"ga:sourceMedium\"},{\"dataType\":\"INTEGER\",\"columnType\":\"METRIC\",\"name\":\"ga:sessions\"},{\"dataType\":\"INTEGER\",\"columnType\":\"METRIC\",\"name\":\"ga:pageViews\"}],\"id\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&dimensions=ga:sourceMedium&metrics=ga:sessions,ga:pageViews&start-date=2015-01-01&end-date=2015-01-28&max-results=1\",\"totalsForAllResults\":{\"ga:pageViews\":\"444\",\"ga:sessions\":\"444\"},\"itemsPerPage\":1,\"profileInfo\":{\"accountId\":\"123\",\"webPropertyId\":\"UA-123-1\",\"tableId\":\"ga:123\",\"profileId\":\"123\",\"profileName\":\"test\",\"internalWebPropertyId\":\"123\"},\"selfLink\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&dimensions=ga:sourceMedium&metrics=ga:sessions,ga:pageViews&start-date=2015-01-01&end-date=2015-01-28&max-results=1\",\"nextLink\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&dimensions=ga:sourceMedium&metrics=ga:sessions,ga:pageViews&start-date=2015-01-01&end-date=2015-01-28&start-index=2&max-results=1\",\"rows\":[[\"(direct) / (none)\",\"44444\",\"5555\"]],\"containsSampledData\":false}";
@@ -1326,14 +1477,15 @@ gasc.model.PresParam = function (obj) {
 
     this.executeQueryAndRetryIfUnsuccessfullSuccessfullQueryTest = function () {
 
-        var apiMockupValidResult = function (a,b,c,d,e) {
-            return apiReturn0Dimension;
+        var apiMockupValidResult = function (a, b, c, d, e) {
+            return JSON.parse(apiReturn0Dimension);
         };
 
         var queryParam = new gasc.model.QueryParam();
         var apiResultFromTest = gasc.analytics.executeAndRetryIfUnsuccessfull(queryParam, apiMockupValidResult);
+        var apiResultFromTestString = JSON.stringify(apiResultFromTest);
 
-        GSUnit.assertEquals(apiResultFromTest,apiReturn0Dimension);
+        GSUnit.assertEquals(apiResultFromTestString, apiReturn0Dimension);
     };
 
     this.executeQueryAndRetryIfUnsuccessfullUnsuccessfullQueryTest = function () {
@@ -1348,14 +1500,13 @@ gasc.model.PresParam = function (obj) {
             var apiResultFromTest = gasc.analytics.executeAndRetryIfUnsuccessfull(queryParam, executeQueryMockupInvalidResult);
             GSUnit.fail();
         } catch (error) {
-            GSUnit.assertContains(error.message,partOfErrorMsg);
+            GSUnit.assertContains(error.message, partOfErrorMsg);
         }
     };
 
 
-    this.analyticsAPITest = function(analyticsIdForTesting) {
-        var env = gasc.env.generateProductionEnvironment();
-        var apiFunction = env.apiFunctionCore;
+    this.analyticsAPITest = function (analyticsIdForTesting) {
+        var apiFunction = Analytics.Data.Ga.get;
 
         var queryParam = new gasc.model.QueryParam();
         queryParam.startDate = "2015-01-13";
@@ -1367,8 +1518,7 @@ gasc.model.PresParam = function (obj) {
             queryParam.analyticsId,
             queryParam.startDate,
             queryParam.endDate,
-            queryParam.metrics/*,
-             optParameter*/
+            queryParam.metrics
         );
 
         GSUnit.assertEvaluatesToTrue(apiResult);
@@ -1381,21 +1531,21 @@ gasc.model.PresParam = function (obj) {
 // ##############  gasc.test.view ###################
 // ##################################################
 
-(function ( undefined ) {
+(function (undefined) {
 
     var apiReturn0Dimension = "{\"kind\":\"analytics#gaData\",\"id\":\"https:\/\/www.googleapis.com\/analytics\/v3\/data\/ga?ids=ga:53113218&metrics=ga:users&start-date=30daysAgo&end-date=yesterday\",\"query\":{\"start-date\":\"30daysAgo\",\"end-date\":\"yesterday\",\"ids\":\"ga:53113218\",\"metrics\":[\"ga:users\"],\"start-index\":1,\"max-results\":1000},\"itemsPerPage\":1000,\"totalResults\":1,\"selfLink\":\"https:\/\/www.googleapis.com\/analytics\/v3\/data\/ga?ids=ga:53113218&metrics=ga:users&start-date=30daysAgo&end-date=yesterday\",\"profileInfo\":{\"profileId\":\"53113218\",\"accountId\":\"27202531\",\"webPropertyId\":\"UA-27202531-1\",\"internalWebPropertyId\":\"52344542\",\"profileName\":\"nu3 DE\",\"tableId\":\"ga:53113218\"},\"containsSampledData\":false,\"columnHeaders\":[{\"name\":\"ga:users\",\"columnType\":\"METRIC\",\"dataType\":\"INTEGER\"}],\"totalsForAllResults\":{\"ga:users\":\"272386\"},\"rows\":[[\"272386\"]]}";
     var apiReturn1Dimension = "{\"kind\":\"analytics#gaData\",\"id\":\"https:\/\/www.googleapis.com\/analytics\/v3\/data\/ga?ids=ga:123123&dimensions=ga:userType&metrics=ga:users&start-date=30daysAgo&end-date=yesterday\",\"query\":{\"start-date\":\"30daysAgo\",\"end-date\":\"yesterday\",\"ids\":\"ga:123123\",\"dimensions\":\"ga:userType\",\"metrics\":[\"ga:users\"],\"start-index\":1,\"max-results\":1000},\"itemsPerPage\":1000,\"totalResults\":2,\"selfLink\":\"https:\/\/www.googleapis.com\/analytics\/v3\/data\/ga?ids=ga:123123&dimensions=ga:userType&metrics=ga:users&start-date=30daysAgo&end-date=yesterday\",\"profileInfo\":{\"profileId\":\"123123\",\"accountId\":\"234234\",\"webPropertyId\":\"UA-234122-1\",\"internalWebPropertyId\":\"234123\",\"profileName\":\"asdf\",\"tableId\":\"ga:123123\"},\"containsSampledData\":false,\"columnHeaders\":[{\"name\":\"ga:userType\",\"columnType\":\"DIMENSION\",\"dataType\":\"STRING\"},{\"name\":\"ga:users\",\"columnType\":\"METRIC\",\"dataType\":\"INTEGER\"}],\"totalsForAllResults\":{\"ga:users\":\"3333\"},\"rows\":[[\"New Visitor\",\"2222\"],[\"Returning Visitor\",\"1111\"]]}";
     var apiReturn2Dimension = "{\"kind\":\"analytics#gaData\",\"id\":\"https:\/\/www.googleapis.com\/analytics\/v3\/data\/ga?ids=ga:123&dimensions=ga:userType,ga:deviceCategory&metrics=ga:users&start-date=30daysAgo&end-date=yesterday\",\"query\":{\"start-date\":\"30daysAgo\",\"end-date\":\"yesterday\",\"ids\":\"ga:123\",\"dimensions\":\"ga:userType,ga:deviceCategory\",\"metrics\":[\"ga:users\"],\"start-index\":1,\"max-results\":1000},\"itemsPerPage\":1000,\"totalResults\":6,\"selfLink\":\"https:\/\/www.googleapis.com\/analytics\/v3\/data\/ga?ids=ga:123&dimensions=ga:userType,ga:deviceCategory&metrics=ga:users&start-date=30daysAgo&end-date=yesterday\",\"profileInfo\":{\"profileId\":\"123\",\"accountId\":\"1231\",\"webPropertyId\":\"UA-123123-1\",\"internalWebPropertyId\":\"123\",\"profileName\":\"asdf\",\"tableId\":\"ga:123\"},\"containsSampledData\":false,\"columnHeaders\":[{\"name\":\"ga:userType\",\"columnType\":\"DIMENSION\",\"dataType\":\"STRING\"},{\"name\":\"ga:deviceCategory\",\"columnType\":\"DIMENSION\",\"dataType\":\"STRING\"},{\"name\":\"ga:users\",\"columnType\":\"METRIC\",\"dataType\":\"INTEGER\"}],\"totalsForAllResults\":{\"ga:users\":\"1111\"},\"rows\":[[\"New Visitor\",\"desktop\",\"123\"],[\"New Visitor\",\"mobile\",\"1234\"],[\"New Visitor\",\"tablet\",\"42134\"],[\"Returning Visitor\",\"desktop\",\"42134\"],[\"Returning Visitor\",\"mobile\",\"432423\"],[\"Returning Visitor\",\"tablet\",\"123443\"]]}";
 
-    function testOutputArray(apiString,presParam,amountOfDisplayedDimensions) {
+    function testOutputArray(apiString, presParam, amountOfDisplayedDimensions) {
         var apiReturn = JSON.parse(apiString);
-        var output = gasc.view.generateOutputArray(apiReturn,presParam.showHeadersInResult);
+        var output = gasc.view.generateOutputArray(apiReturn, presParam.showHeadersInResult);
 
         var amountOfColumnsForData = 1;
-        GSUnit.assertEquals(amountOfDisplayedDimensions + amountOfColumnsForData,output[0].length);
+        GSUnit.assertEquals(amountOfDisplayedDimensions + amountOfColumnsForData, output[0].length);
 
         var rowsForHeadline = presParam.showHeadersInResult ? 1 : 0;
-        GSUnit.assertEquals(apiReturn.rows.length + rowsForHeadline,output.length);
+        GSUnit.assertEquals(apiReturn.rows.length + rowsForHeadline, output.length);
     }
 
 
@@ -1403,156 +1553,306 @@ gasc.model.PresParam = function (obj) {
         var presParam = new gasc.model.PresParam();
         presParam.showHeadersInResult = false;
 
-        testOutputArray(apiReturn0Dimension,presParam,0);
+        testOutputArray(apiReturn0Dimension, presParam, 0);
     };
 
     this.generateOutputArrayTestHeadlineNoDimensionAllOf1 = function () {
         var presParam = new gasc.model.PresParam();
         presParam.showHeadersInResult = false;
 
-        testOutputArray(apiReturn1Dimension,presParam,1);
+        testOutputArray(apiReturn1Dimension, presParam, 1);
     };
 
     this.generateOutputArrayTestHeadlineNoDimensionAllOf2 = function () {
         var presParam = new gasc.model.PresParam();
         presParam.showHeadersInResult = false;
 
-        testOutputArray(apiReturn2Dimension,presParam,2);
+        testOutputArray(apiReturn2Dimension, presParam, 2);
     };
 
     this.generateOutputArrayTestHeadlineYesDimensionAllOf0 = function () {
         var presParam = new gasc.model.PresParam();
         presParam.showHeadersInResult = true;
 
-        testOutputArray(apiReturn0Dimension,presParam,0);
+        testOutputArray(apiReturn0Dimension, presParam, 0);
     };
 
     this.generateOutputArrayTestHeadlineYesDimensionAllOf1 = function () {
         var presParam = new gasc.model.PresParam();
         presParam.showHeadersInResult = true;
 
-        testOutputArray(apiReturn1Dimension,presParam,1);
+        testOutputArray(apiReturn1Dimension, presParam, 1);
     };
 
     this.generateOutputArrayTestHeadlineYesDimensionAllOf2 = function () {
         var presParam = new gasc.model.PresParam();
         presParam.showHeadersInResult = true;
 
-        testOutputArray(apiReturn2Dimension,presParam,2);
+        testOutputArray(apiReturn2Dimension, presParam, 2);
     };
 
-    this.transform1dArrayTo2dArrayWithDatapointsBelowEachOther = function() {
-        var oneDArray = [0,1,2,3];
+    this.transform1dArrayTo2dArrayWithDatapointsBelowEachOther = function () {
+        var oneDArray = [0, 1, 2, 3];
         var transformedArray = gasc.view.transform1dArrayTo2dArrayWithDatapointsBelowEachOther(oneDArray);
-        GSUnit.assertEquals(0,transformedArray[0][0]);
-        GSUnit.assertEquals(1,transformedArray[1][0]);
-        GSUnit.assertEquals(2,transformedArray[2][0]);
-        GSUnit.assertEquals(3,transformedArray[3][0]);
+        GSUnit.assertEquals(0, transformedArray[0][0]);
+        GSUnit.assertEquals(1, transformedArray[1][0]);
+        GSUnit.assertEquals(2, transformedArray[2][0]);
+        GSUnit.assertEquals(3, transformedArray[3][0]);
     };
 
 }).apply(gasc.namespace.createNs("gasc.test.view"));
 
 
+//##################################################
+//##########  gasc.test.workflow.schedule ##########
+//##################################################
 
- //##################################################
- //##########  gasc.test.workflow.schedule ##########
- //##################################################
-
-(function ( undefined ) {
-    var dummyRangeWithScheduledData = {
-        scheduledData : "",
-        numberOfDataWrites : 0,
-        setValue : function(data) {
-            this.scheduledData = data;
-            this.numberOfDataWrites++;
-        }
-    };
+(function (undefined) {
+    var dummyRangeWithScheduledData = new gasc.test.mock.DummyRange();
 
     var dummySheetWithQueue = {
-        getRange : function(a,b) {
+        getRange: function (a, b) {
             return dummyRangeWithScheduledData;
         },
-        getLastRow : function() {
+        getLastRow: function () {
             return 1;
         },
-        insertRowsBefore : function() {
+        insertRowsBefore: function () {
         }
     };
 
 
     var dummySheetWithQuery = {
-        getRange : function(a,b) {
+        getRange: function (a, b) {
             return dummyRangeWithQueryData;
         },
-        getName : function() {
+        getName: function () {
             return "dummySheetWithQuery";
         }
     };
 
+    var dummyLock = new gasc.test.mock.DummyLock();
 
-    var dummyLock = {
-        lockCount : 0,
-        waitLock : function () {
-            this.lockCount++;
-        },
-        tryLock : function () {
-            this.lockCount++;
-        },
-
-        releaseLock : function () {
-            this.lockCount--;
-        }
+    var dummyRangeWithQueryData = new gasc.test.mock.DummyRange();
+    dummyRangeWithQueryData.getNumRows = function () {
+        return 1;
+    };
+    dummyRangeWithQueryData.getNumColumns = function () {
+        return 1;
+    };
+    dummyRangeWithQueryData.getRow = function () {
+        return 1;
+    };
+    dummyRangeWithQueryData.getColumn = function () {
+        return 1;
+    };
+    dummyRangeWithQueryData.getValue = function () {
+        // result from user entered formula
+        return "{\"queryParam\":{\"analyticsId\":\"ga:67435389\",\"startDate\":\"2015-11-24\",\"endDate\":\"2015-11-30\",\"metrics\":\"ga:transactionRevenue\",\"segment\":\"\",\"filter\":\"\",\"dimension\":\"\",\"sort\":\"\",\"startIndex\":0,\"maxResults\":1,\"samplingLevel\":\"\",\"fields\":\"\"},\"presParam\":{\"showHeadersInResult\":false,\"positionOfResults\":\"RIGHT\"}}";
+    };
+    dummyRangeWithQueryData.getSheet = function () {
+        return dummySheetWithQuery;
     };
 
-    var dummyRangeWithQueryData = {
-        getNumRows : function() {
-            return 1;
-        },
-        getNumColumns : function() {
-            return 1;
-        },
-        getCell : function(a,b) {
-            return {
-                getRow : function () {
-                    return 1;
-                },
-                getColumn : function() {
-                    return 2;
-                },
-                getValue : function() {
-                    return "{\"queryParam\":{\"analyticsId\":\"ga:67435389\",\"startDate\":\"2015-11-24\",\"endDate\":\"2015-11-30\",\"metrics\":\"ga:transactionRevenue\",\"segment\":\"\",\"filter\":\"\",\"dimension\":\"\",\"sort\":\"\",\"startIndex\":0,\"maxResults\":1,\"samplingLevel\":\"\",\"fields\":\"\"},\"presParam\":{\"showHeadersInResult\":false,\"positionOfResults\":\"RIGHT\"}}";
-                },
-                getSheet : function() {
-                    return dummySheetWithQuery;
-                }
-            };
-        }
-    };
 
-    var apiMock = function(a,b,c,d,e) {
-        var apiReturn0Dimension = "{\"totalResults\":1,\"query\":{\"metrics\":[\"ga:sessions\"],\"max-results\":1,\"end-date\":\"2015-01-28\",\"ids\":\"ga:123\",\"start-index\":1,\"start-date\":\"2015-01-01\"},\"kind\":\"analytics#gaData\",\"columnHeaders\":[{\"dataType\":\"INTEGER\",\"columnType\":\"METRIC\",\"name\":\"ga:sessions\"}],\"id\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&metrics=ga:sessions&start-date=2015-01-01&end-date=2015-01-28&max-results=1\",\"totalsForAllResults\":{\"ga:sessions\":\"20\"},\"itemsPerPage\":1,\"profileInfo\":{\"accountId\":\"123\",\"webPropertyId\":\"UA-123-1\",\"tableId\":\"ga:123\",\"profileId\":\"123\",\"profileName\":\"example\",\"internalWebPropertyId\":\"123\"},\"selfLink\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&metrics=ga:sessions&start-date=2015-01-01&end-date=2015-01-28&max-results=1\",\"rows\":[[\"5555\"]],\"containsSampledData\":false}";
-        return apiReturn0Dimension;
+    var apiMock = function (a, b, c, d, e) {
+        GSUnit.fail();
     };
 
     var env = {
-        getScheduledDataDailyUpdateSheet : function() {
+        getScheduledDataDailyUpdateSheet: function () {
             return dummySheetWithQueue;
         },
-        getLock : function() {
+        getLock: function () {
             return dummyLock;
         },
-        apiFunctionCore : apiMock,
-        activeSpreadsheet : dummySheetWithQuery,
-        activeRange : dummyRangeWithQueryData
+        apiFunctionCore: apiMock,
+        activeSpreadsheet: {},
+        activeRange: dummyRangeWithQueryData
     };
 
-    this.basicTest = function() {
-        gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env,dummySheetWithQueue);
-        GSUnit.assertEquals(0,dummyLock.lockCount);
-        GSUnit.assertNotEquals(dummyRangeWithScheduledData.scheduledData,"");
-        GSUnit.assertEquals(1,dummyRangeWithScheduledData.numberOfDataWrites);
+    this.basicTest = function () {
+        gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env, dummySheetWithQueue);
+        GSUnit.assertEquals(0, dummyLock.lockCount);
+        GSUnit.assertNotEquals(dummyRangeWithScheduledData.scheduledData, "");
+
+
+        var range = dummyRangeWithQueryData;
+
+        var writesOnQuerySheet = dummyRangeWithQueryData.numberOfWrites;
+        GSUnit.assertEquals(0, dummyRangeWithQueryData.numberOfWrites);
+        var writesOnQueueSheet = dummyRangeWithScheduledData.numberOfWrites;
+        GSUnit.assertEquals(1, dummyRangeWithScheduledData.numberOfWrites);
     };
 
 
 }).apply(gasc.namespace.createNs("gasc.test.workflow.schedule"));
 
+
+//##################################################
+//####  gasc.test.workflow.executeDailyQueries #####
+//##################################################
+
+(function (undefined) {
+
+    var dummyRangeWithScheduledData = {
+        numberOfWrites: 0,
+        setValue: function (data) {
+            this.scheduledData = data;
+            this.numberOfWrites++;
+        },
+        getNumRows: function () {
+            return 1;
+        },
+        getNumColumns: function () {
+            return 1;
+        },
+        getCell: function (a, b) {
+            return dummyRangeWithScheduledData;
+        },
+        getRow: function () {
+            return 1;
+        },
+        getColumn: function () {
+            return 1;
+        },
+        getValue: function () {
+            // scheduled data
+            return "{\"sheetName\":\"dummySheetWithQuery\",\"row\":6,\"column\":8}";
+        },
+        getSheet: function () {
+            return dummySheetWithQuery;
+        }
+    };
+
+    var dummySheetWithQueue = {
+        getRange: function (a, b) {
+            return dummyRangeWithScheduledData;
+        },
+        getLastRow: function () {
+            return 2;
+        },
+        insertRowsBefore: function () {
+        }
+    };
+
+
+    var dummySheetWithQuery = {
+        getRange: function (a, b) {
+            return dummyRangeWithQueryData;
+        },
+        getName: function () {
+            return "dummySheetWithQuery";
+        }
+    };
+
+
+    var dummyLock = new gasc.test.mock.DummyLock();
+
+
+    var dummyRangeWithQueryData = {
+        numberOfWrites: 0,
+        setValue: function (data) {
+            this.scheduledData = data;
+            this.numberOfWrites++;
+        },
+        getNumRows: function () {
+            return 1;
+        },
+        getNumColumns: function () {
+            return 1;
+        },
+        getRow: function () {
+            return 1;
+        },
+        getColumn: function () {
+            return 1;
+        },
+        getValue: function () {
+            // result from user entered formula
+            return "{\"queryParam\":{\"analyticsId\":\"ga:67435389\",\"startDate\":\"2015-11-24\",\"endDate\":\"2015-11-30\",\"metrics\":\"ga:transactionRevenue\",\"segment\":\"\",\"filter\":\"\",\"dimension\":\"\",\"sort\":\"\",\"startIndex\":0,\"maxResults\":1,\"samplingLevel\":\"\",\"fields\":\"\"},\"presParam\":{\"showHeadersInResult\":false,\"positionOfResults\":\"RIGHT\"}}";
+        },
+        getSheet: function () {
+            return dummySheetWithQuery;
+        },
+        getCell: function (a, b) {
+            return dummyRangeWithQueryData
+        }
+    };
+
+    var apiMock = function (a, b, c, d, e) {
+        var apiReturn0DimensionString = "{\"totalResults\":1,\"query\":{\"metrics\":[\"ga:sessions\"],\"max-results\":1,\"end-date\":\"2015-01-28\",\"ids\":\"ga:123\",\"start-index\":1,\"start-date\":\"2015-01-01\"},\"kind\":\"analytics#gaData\",\"columnHeaders\":[{\"dataType\":\"INTEGER\",\"columnType\":\"METRIC\",\"name\":\"ga:sessions\"}],\"id\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&metrics=ga:sessions&start-date=2015-01-01&end-date=2015-01-28&max-results=1\",\"totalsForAllResults\":{\"ga:sessions\":\"20\"},\"itemsPerPage\":1,\"profileInfo\":{\"accountId\":\"123\",\"webPropertyId\":\"UA-123-1\",\"tableId\":\"ga:123\",\"profileId\":\"123\",\"profileName\":\"example\",\"internalWebPropertyId\":\"123\"},\"selfLink\":\"https://www.googleapis.com/analytics/v3/data/ga?ids=ga:123&metrics=ga:sessions&start-date=2015-01-01&end-date=2015-01-28&max-results=1\",\"rows\":[[\"5555\"]],\"containsSampledData\":false}";
+        gasc.logger.fine("api mock return string: " + apiReturn0DimensionString);
+        var apiReturn = JSON.parse(apiReturn0DimensionString);
+        apiMockExecutionCount++;
+        return apiReturn;
+    };
+    var apiMockExecutionCount = 0;
+
+    var env = {
+        getScheduledDataDailyUpdateSheet: function () {
+            return dummySheetWithQueue;
+        },
+        getLock: function () {
+            return dummyLock;
+        },
+        apiFunctionCore: apiMock,
+        activeSpreadsheet: {
+            getSheetByName: function (name) {
+                if (name === "dummySheetWithQuery") return dummySheetWithQuery;
+
+                // more mocking is needed
+                GSUnit.fail();
+            }
+        },
+        activeRange: dummyRangeWithQueryData
+    };
+
+
+    this.normalExecution = function () {
+        gasc.workflow.executeDailyQueries.triggerStartingPoint(env, dummySheetWithQueue);
+        GSUnit.assertEquals(0, dummyLock.lockCount);
+        GSUnit.assertEquals(1, apiMockExecutionCount);
+        GSUnit.assertEvaluatesToTrue(dummyRangeWithScheduledData.scheduledData);
+        GSUnit.assertContains("lastExecuted", dummyRangeWithScheduledData.scheduledData);
+        GSUnit.assertEquals(1, dummyRangeWithScheduledData.numberOfWrites);
+    };
+
+}).apply(gasc.namespace.createNs("gasc.test.workflow.executeDailyQueries"));
+
+
+//##################################################
+//####  gasc.test.util.dateIsBeforeTodayMidnightOrUndefined #####
+//##################################################
+
+(function (undefined) {
+
+    this.testInputOfYesterday = function () {
+        var yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        var result = gasc.util.dateIsBeforeTodayMidnightOrUndefined(yesterday);
+        GSUnit.assertTrue(result);
+    };
+
+    this.testInputOfEarlierToday = function () {
+        var oneHourBefore = new Date();
+        oneHourBefore.setHours((oneHourBefore.getHours() - 1));
+
+        var result = gasc.util.dateIsBeforeTodayMidnightOrUndefined(oneHourBefore);
+        GSUnit.assertFalse(result);
+    };
+
+    this.testInputOfUndefined = function () {
+        var result = gasc.util.dateIsBeforeTodayMidnightOrUndefined(undefined);
+        GSUnit.assertTrue(result);
+    };
+
+    this.testInputOfTomorrow = function () {
+        var tomorrow = new Date();
+        tomorrow.setDate((tomorrow.getDate() + 1));
+        var result = gasc.util.dateIsBeforeTodayMidnightOrUndefined(tomorrow);
+        GSUnit.assertFalse(result);
+    };
+
+}).apply(gasc.namespace.createNs("gasc.test.util.dateIsBeforeTodayMidnightOrUndefined"));
