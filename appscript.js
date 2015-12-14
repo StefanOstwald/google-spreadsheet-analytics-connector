@@ -25,6 +25,8 @@ function onOpen() {
         .addSubMenu(ui.createMenu('debug')
             .addItem('Schedule queries in active range to queue', 'scheduleActiveRangeForDailyUpdate')
             .addItem('trigger starting point', 'triggerStartingPointForProduction')
+            .addItem('delete all trigger', 'deleteAllTriggersOnProduction')
+            .addItem('setup hourly trigger', 'setupHourlyTriggerOnProduction')
         )
         .addToUi();
 }
@@ -33,7 +35,9 @@ function triggerStartingPointForProduction() {
     gasc.logger.useBetterLogOnOpenSpreadsheet();
     gasc.logger.log("triggerStartingPointForProduction started");
     var env = gasc.env.generateProductionEnvironment();
+    gasc.logger.fine("starting to retrieve queueSheet");
     var queueSheet = env.getScheduledDataDailyUpdateSheet();
+    gasc.logger.fine("queueSheet was found");
     gasc.workflow.executeDailyQueries.triggerStartingPoint(env, queueSheet);
 }
 
@@ -49,6 +53,20 @@ function scheduleActiveRangeForDailyUpdate() {
     gasc.logger.log("scheduleActiveRangeForDailyUpdate started");
     var env = gasc.env.generateProductionEnvironment();
     gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env, env.getScheduledDataDailyUpdateSheet());
+}
+
+function deleteAllTriggersOnProduction() {
+    gasc.logger.useBetterLogOnOpenSpreadsheet();
+    gasc.logger.log("deleteAllTriggersOnProduction started");
+    var env = gasc.env.generateProductionEnvironment();
+    gasc.workflow.trigger.deleteAllTriggers(env);
+}
+
+function setupHourlyTriggerOnProduction() {
+    gasc.logger.useBetterLogOnOpenSpreadsheet();
+    gasc.logger.log("setupHourlyTriggerOnProduction started");
+    var env = gasc.env.generateProductionEnvironment();
+    gasc.workflow.trigger.setupTrigger(env);
 }
 
 
@@ -583,6 +601,8 @@ gasc.model.PresParam = function (obj) {
             this.env.activeRange = SpreadsheetApp.getActiveRange();
             gasc.logger.info("initializing  production environment successfull");
             this.env.scheduledDataDailyUpdateSheetName = "daily_updates";
+            this.env.scriptApp = ScriptApp;
+            this.env.triggerStartingPointFunctionName = 'triggerStartingPointForProduction';
         }
 
         return this.env;
@@ -736,6 +756,54 @@ gasc.model.PresParam = function (obj) {
 
 
 }).apply(gasc.namespace.createNs("gasc.workflow.executeDailyQueries"));
+
+
+
+// ##################################################
+// ############  gasc.workflow.trigger  #############
+// ##################################################
+
+(function (undefined) {
+
+    var MS_BETWEEN_SCRIPTAPP_CALLS = 1000; //in ms
+    var HOURS_BETWEEN_TRIGGER_CALLS = 1;
+
+    this.deleteAllTriggers = function (env) {
+        gasc.logger.info("deleting all triggers start");
+
+        var allTriggers = env.scriptApp.getProjectTriggers();
+        var i;
+        for (i = 0; i < allTriggers.length; i++) {
+            gasc.logger.fine("starting to delete trigger "+ i);
+            if (triggerIsOfThisScript(allTriggers[i])) {
+
+                gasc.logger.fine("sleeping for "+MS_BETWEEN_SCRIPTAPP_CALLS+"ms to avoid too many scriptapp calls.");
+                Utilities.sleep(MS_BETWEEN_SCRIPTAPP_CALLS);
+
+                ScriptApp.deleteTrigger(allTriggers[i]);
+                gasc.logger.fine("delete trigger " + i + " successful");
+            }
+        }
+        gasc.logger.fine("deleting all triggers successful");
+
+        function triggerIsOfThisScript(trigger, env) {
+            return (trigger.getHandlerFunction() === env.triggerStartingPointFunctionName);
+        }
+    };
+
+    this.setupTrigger = function (env) {
+        gasc.logger.info("setupTrigger start");
+
+        var trigger = env.scriptApp.newTrigger(env.triggerStartingPointFunctionName)
+            .timeBased()
+            .everyHours(HOURS_BETWEEN_TRIGGER_CALLS)
+            .create();
+
+        return trigger;
+    };
+
+}).apply(gasc.namespace.createNs("gasc.workflow.trigger"));
+
 
 
 // ##################################################
@@ -931,6 +999,9 @@ gasc.model.PresParam = function (obj) {
 
 
     this.getOrCreateSheetByName = function (activeSpreadsheet, name) {
+        gasc.logger.info("getOrCreateSheetByName starting");
+        gasc.logger.fine("activeSpreadsheet is defined: " + !!activeSpreadsheet);
+        gasc.logger.fine("name for which shall be searched for: " + name);
         var sheet = activeSpreadsheet.getSheetByName(name);
         if (sheet) {
             gasc.logger.info("Sheet with the name " + name + " was found.");
