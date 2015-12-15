@@ -33,8 +33,9 @@ function onOpen() {
 
 function triggerStartingPointForProduction() {
     gasc.logger.useBetterLogOnOpenSpreadsheet();
-    gasc.logger.log("triggerStartingPointForProduction started");
     var env = gasc.env.generateProductionEnvironment();
+    gasc.logger.setLoggingLevel(env.loggingLevel);
+    gasc.logger.info("triggerStartingPointForProduction started");
     gasc.logger.fine("starting to retrieve queueSheet");
     var queueSheet = env.getScheduledDataDailyUpdateSheet();
     gasc.logger.fine("queueSheet was found");
@@ -43,29 +44,33 @@ function triggerStartingPointForProduction() {
 
 function directQuery() {
     gasc.logger.useBetterLogOnOpenSpreadsheet();
-    gasc.logger.log("directQuery started");
     var env = gasc.env.generateProductionEnvironment();
+    gasc.logger.setLoggingLevel(env.loggingLevel);
+    gasc.logger.info("directQuery started");
     gasc.workflow.directQuery.run(env);
 }
 
 function scheduleActiveRangeForDailyUpdate() {
     gasc.logger.useBetterLogOnOpenSpreadsheet();
-    gasc.logger.log("scheduleActiveRangeForDailyUpdate started");
     var env = gasc.env.generateProductionEnvironment();
+    gasc.logger.setLoggingLevel(env.loggingLevel);
+    gasc.logger.info("scheduleActiveRangeForDailyUpdate started");
     gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env, env.getScheduledDataDailyUpdateSheet());
 }
 
 function deleteAllTriggersOnProduction() {
     gasc.logger.useBetterLogOnOpenSpreadsheet();
-    gasc.logger.log("deleteAllTriggersOnProduction started");
     var env = gasc.env.generateProductionEnvironment();
+    gasc.logger.setLoggingLevel(env.loggingLevel);
+    gasc.logger.info("deleteAllTriggersOnProduction started");
     gasc.workflow.trigger.deleteAllTriggers(env);
 }
 
 function setupHourlyTriggerOnProduction() {
     gasc.logger.useBetterLogOnOpenSpreadsheet();
-    gasc.logger.log("setupHourlyTriggerOnProduction started");
     var env = gasc.env.generateProductionEnvironment();
+    gasc.logger.setLoggingLevel(env.loggingLevel);
+    gasc.logger.info("setupHourlyTriggerOnProduction started");
     gasc.workflow.trigger.setupTrigger(env);
 }
 
@@ -179,18 +184,51 @@ gasc.namespace.createNs = function (namespace) {
 
 (function (undefined) {
 
-    var logFine = true;
-    var logInfo = true;
-    var logSevere = true;
+    var loggingLevel = {
+        logFine : true,
+        logInfo : true,
+        logSevere : true
+    };
 
+    var loggerConfig = {
+        loggerSelection : "",
+        externalLoggingSpreadsheetId : ""
+    };
+
+    function loggerIsInitialized () {
+        return !!this.logInterface;
+    }
+
+    this.setLoggingLevel = function(newLoggingLevel) {
+        loggingLevel = newLoggingLevel;
+    };
 
     this.useBetterLogOnExternalSpreadsheet = function (loggingSpreadsheetId) {
-        this.logInterface = BetterLog.useSpreadsheet(loggingSpreadsheetId); // for BetterLog https://sites.google.com/site/scriptsexamples/custom-methods/betterlog
+        loggerConfig.loggerSelection = "betterLogOnExternalSpreadsheet";
+        loggerConfig.externalLoggingSpreadsheetId = loggingSpreadsheetId;
     };
 
     this.useBetterLogOnOpenSpreadsheet = function () {
-        this.logInterface = BetterLog.useSpreadsheet();
+        loggerConfig.loggerSelection = "betterLogOnOpenSpreadsheet";
     };
+
+    /**
+     * Initializes the logger based upon its configuration.
+     * @returns {boolean} true if the initialization was successfull
+     */
+    function initLogger() {
+        if (loggerConfig.loggerSelection === "betterLogOnExternalSpreadsheet") {
+            this.logInterface = BetterLog.useSpreadsheet(loggerConfig.externalLoggingSpreadsheetId);
+            // for BetterLog https://sites.google.com/site/scriptsexamples/custom-methods/betterlog
+            return true;
+        }
+        if (loggerConfig.loggerSelection === "betterLogOnOpenSpreadsheet") {
+            this.logInterface = BetterLog.useSpreadsheet();
+            // for BetterLog https://sites.google.com/site/scriptsexamples/custom-methods/betterlog
+            return true;
+        }
+        return false;
+    }
 
 
     this.useGasConsole = function () {
@@ -204,26 +242,29 @@ gasc.namespace.createNs = function (namespace) {
     };
 
     this.severe = function (data) {
-        if (logSevere) {
-            this.log(data);
+        if (loggingLevel.logSevere) {
+            log(data);
         }
     };
 
-    this.log = function (data) {
-        if (this.logInterface) {
+    function log(data) {
+        if (!loggerIsInitialized) {
+            initLogger();
+        }
+        if (!loggerIsInitialized) {
             this.logInterface.log(data);
         }
-    };
+    }
 
     this.info = function (data) {
-        if (logInfo) {
-            this.log(data);
+        if (loggingLevel.logInfo) {
+            log(data);
         }
     };
 
     this.fine = function (data) {
-        if (logFine) {
-            this.log(data);
+        if (loggingLevel.logFine) {
+            log(data);
         }
     };
 
@@ -297,6 +338,7 @@ gasc.model.QuerySet = function (obj) {
 
 (function (undefined) {
 
+    //TODO externalize functions in config so the queryset does not need to be casted.
     this.prototype.containsValidConfig = function () {
         if (!this.config) {
             gasc.logger.info("config is falsey");
@@ -528,6 +570,7 @@ gasc.model.PresParam = function (obj) {
 
 (function (undefined) {
 
+    // TODO delete me
     /**
      * The function tests if the jsonString is valid.
      * @param jsonString The string which shall be checked and parsed
@@ -592,17 +635,24 @@ gasc.model.PresParam = function (obj) {
                 },
                 getLock: function () {
                     return LockService.getScriptLock();
+                },
+                getActiveRange: function () {
+                    gasc.logger.info("retrieve activeRange");
+                    return SpreadsheetApp.getActiveRange();
                 }
             };
             this.env.apiFunctionCore = Analytics.Data.Ga.get;
             this.env.activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
             gasc.logger.info("activeSpreadsheet url: " + this.env.activeSpreadsheet.getUrl());
-            gasc.logger.info("retrieve activeRange");
-            this.env.activeRange = SpreadsheetApp.getActiveRange();
             gasc.logger.info("initializing  production environment successfull");
             this.env.scheduledDataDailyUpdateSheetName = "daily_updates";
             this.env.scriptApp = ScriptApp;
             this.env.triggerStartingPointFunctionName = 'triggerStartingPointForProduction';
+            this.env.loggingLevel = {
+                logFine : false,
+                logInfo : false,
+                logSevere : true
+            }
         }
 
         return this.env;
@@ -619,19 +669,19 @@ gasc.model.PresParam = function (obj) {
 
     this.run = function (env) {
         gasc.logger.info("generating querySets for active range - start");
-        var querySets = gasc.spreadsheet.getQuerySetsInRange(env.activeRange);
+        var querySets = gasc.spreadsheet.getQuerySetsInRange(env.getActiveRange());
         gasc.logger.info("generating querySets for active range - finished");
 
         var iQuerySet;
-        for (var i = 0; i < this.querySets.length; i++) {
-            iQuerySet = this.querySets[i];
+        for (var i = 0; i < querySets.length; i++) {
+            iQuerySet = querySets[i];
 
             gasc.logger.fine("iQuerySet: " + JSON.stringify(iQuerySet));
             iQuerySet.analyticsResponse = gasc.analytics.executeAndRetryIfUnsuccessfull(iQuerySet.config.queryParam, env.apiFunctionCore);
             gasc.logger.info("analytics query received.");
             iQuerySet.output = gasc.view.generateOutputArray(iQuerySet.analyticsResponse, iQuerySet.config.presParam.showHeadersInResult);
 
-            gasc.spreadsheet.writeOutputOfQuerySetToSheet(iQuerySet, env.activeRange.getSheet());
+            gasc.spreadsheet.writeOutputOfQuerySetToSheet(iQuerySet, env.getActiveRange().getSheet());
         }
     };
 
@@ -647,28 +697,36 @@ gasc.model.PresParam = function (obj) {
     this.scheduleQueriesInActiveRangeToSheet = function (env, sheet) {
         gasc.logger.info("generating querySets for active range - start");
 
-        var querySets = gasc.spreadsheet.getQuerySetsInRange(env.activeRange);
+        var querySets = gasc.spreadsheet.getQuerySetsInRange(env.getActiveRange());
         gasc.logger.info("generating querySets for active range - finished");
-        removeConfigInEachQuerySet(querySets);
 
+        if (querySets.length > 0) {
 
-        gasc.spreadsheet.lock.wait(env.getLock());
+            removeConfigInEachQuerySet(querySets);
 
-        var rowIndexOfFirstDatapoint = gasc.spreadsheet.getFirstEmptyRow(sheet);
-        gasc.logger.info("first empty row in sheet " + sheet.name + ": " + rowIndexOfFirstDatapoint);
+            gasc.spreadsheet.lock.wait(env.getLock());
 
-        addLocationOfScheduledDataInScheduleSheetToEachQuerySet(querySets, rowIndexOfFirstDatapoint);
-        var querySetsAsJson = gasc.view.transformArrayelementsToJson(querySets);
-        var scheduledDataArray = gasc.view.transform1dArrayTo2dArrayWithDatapointsBelowEachOther(querySetsAsJson);
+            var rowIndexOfFirstDatapoint = gasc.spreadsheet.getFirstEmptyRow(sheet);
+            gasc.logger.info("first empty row in sheet " + sheet.name + ": " + rowIndexOfFirstDatapoint);
 
-        gasc.spreadsheet.addRows(sheet, scheduledDataArray.length);
-        gasc.logger.info("rows successfully added");
-        var firstColumn = 1;
-        gasc.spreadsheet.writeDataToSheet(sheet, rowIndexOfFirstDatapoint, firstColumn, scheduledDataArray);
-        gasc.logger.info("rows successfully added");
+            addLocationOfScheduledDataInScheduleSheetToEachQuerySet(querySets, rowIndexOfFirstDatapoint);
+            var querySetsAsJson = gasc.view.transformArrayelementsToJson(querySets);
+            gasc.logger.fine("querySetsAsJson: " + JSON.stringify(querySetsAsJson));
 
-        gasc.spreadsheet.lock.release(env.getLock());
+            var scheduledDataArray = gasc.view.transform1dArrayTo2dArrayWithDatapointsBelowEachOther(querySetsAsJson);
+            gasc.logger.fine("scheduledDataArray: " + JSON.stringify(scheduledDataArray));
 
+            gasc.spreadsheet.addRows(sheet, scheduledDataArray.length);
+            gasc.logger.info("rows successfully added");
+
+            var firstColumn = 1;
+            gasc.spreadsheet.writeDataToSheet(sheet, rowIndexOfFirstDatapoint, firstColumn, scheduledDataArray);
+            gasc.logger.info("rows successfully added");
+
+            gasc.spreadsheet.lock.release(env.getLock());
+        } else {
+            gasc.logger.info("no queries were found in active range");
+        }
 
         function addLocationOfScheduledDataInScheduleSheetToEachQuerySet(querySets, rowIndexOfFirstDatapoint) {
             var i;
@@ -924,7 +982,7 @@ gasc.model.PresParam = function (obj) {
      */
     this.writeDataToSheet = function (sheet, firstRowIndex, leftColumnIndex, data) {
         var rangeOnSheetToBeFilled = sheet.getRange(firstRowIndex, leftColumnIndex, data.length, data[0].length);
-        rangeOnSheetToBeFilled.setValue(data);
+        rangeOnSheetToBeFilled.setValues(data);
     };
 
     this.writeOutputOfQuerySetToSheet = function (querySet, sheet) {
@@ -942,12 +1000,16 @@ gasc.model.PresParam = function (obj) {
         for (var iRow = 1; iRow <= range.getNumRows(); iRow++) {
             for (var iColumn = 1; iColumn <= range.getNumColumns(); iColumn++) {
                 gasc.logger.info("starting to verify if range[" + iRow + "," + iColumn + "] contains a valid QuerySet");
-                var iQuerySet = this.getQuerySetFromCell(range.getCell(iRow, iColumn));
-                if (iQuerySet.containsValidConfig()) {
-                    gasc.logger.info("valid config found in range[" + iRow + "," + iColumn + "]");
-                    querySets.push(iQuerySet);
-                } else {
-                    gasc.logger.info("no valid config found in range[" + iRow + "," + iColumn + "]");
+                try {
+                    var iQuerySet = this.getQuerySetFromCell(range.getCell(iRow, iColumn));
+                    if (iQuerySet.containsValidConfig()) {
+                        gasc.logger.info("valid config found in range[" + iRow + "," + iColumn + "]");
+                        querySets.push(iQuerySet);
+                    } else {
+                        gasc.logger.info("no valid config found in range[" + iRow + "," + iColumn + "]");
+                    }
+                } catch (e) {
+                    gasc.logger.info("no valid json found in range[" + iRow + "," + iColumn + "]");
                 }
             }
         }
@@ -962,7 +1024,7 @@ gasc.model.PresParam = function (obj) {
         gasc.logger.info("starting to parse cell row: " + cell.getRow() + " column " + cell.getColumn());
 
         // TODO is there a better way for creating type Config from json
-        var configFromCell = gasc.util.tryParseJSON(cell.getValue());
+        var configFromCell = JSON.parse(cell.getValue());
         iQuerySet.config = new gasc.model.Config(configFromCell);
 
         var queryParam = new gasc.model.QueryParam(configFromCell.queryParam);
@@ -1096,7 +1158,7 @@ gasc.model.PresParam = function (obj) {
     this.analyticsIdForTesting = "ga:53113218";
 
     this.runAllTests = function () {
-        gasc.logger.log("########## Start: " + new Date() + " ##########");
+        gasc.logger.info("########## Start: " + new Date() + " ##########");
 
         gasc.test.namespaceCreator.createNsTestWithoutHierarchy();
         gasc.test.namespaceCreator.createNsTestWithHierarchy();
@@ -1131,14 +1193,12 @@ gasc.model.PresParam = function (obj) {
         gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfTomorrow();
         gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfUndefined();
         gasc.test.workflow.executeDailyQueries.normalExecution();
-
         gasc.test.analytics.analyticsAPITest(this.analyticsIdForTesting);
 
 
         // the following tests contain intentionally triggered exceptions
+        // gasc.test.workflow.schedule.noValidData.cellContainsNoFormula();
         // gasc.test.util.tryParseJSONTestInvalid();
-        // FIXME should work just like that but doesn't gasc.test.analytics.executeQueryAndRetryIfUnsuccessfullUnsuccessfullQueryTest();
-
     };
 
 }).apply(gasc.namespace.createNs("gasc.test"));
@@ -1174,9 +1234,13 @@ gasc.model.PresParam = function (obj) {
         this.data = "";
     };
 
-    this.DummyRange.prototype.setValue = function (data) {
+    this.DummyRange.prototype.setValues = function (data) {
         this.scheduledData = data;
         this.numberOfWrites++;
+    };
+
+    this.DummyRange.prototype.setValue = function (data) {
+        this.setValues(data);
     };
 
     this.DummyRange.prototype.getCell = function () {
@@ -1559,22 +1623,6 @@ gasc.model.PresParam = function (obj) {
         GSUnit.assertEquals(apiResultFromTestString, apiReturn0Dimension);
     };
 
-    this.executeQueryAndRetryIfUnsuccessfullUnsuccessfullQueryTest = function () {
-        var partOfErrorMsg = "times. It is not further tried for this request.";
-
-        var executeQueryMockupInvalidResult = function () {
-            throw "intentionally exception for test";
-        };
-
-        var queryParam = {};
-        try {
-            var apiResultFromTest = gasc.analytics.executeAndRetryIfUnsuccessfull(queryParam, executeQueryMockupInvalidResult);
-            GSUnit.fail();
-        } catch (error) {
-            GSUnit.assertContains(error.message, partOfErrorMsg);
-        }
-    };
-
 
     this.analyticsAPITest = function (analyticsIdForTesting) {
         var apiFunction = Analytics.Data.Ga.get;
@@ -1730,7 +1778,7 @@ gasc.model.PresParam = function (obj) {
         GSUnit.fail();
     };
 
-    var env = {
+    var envWithFormula = {
         getScheduledDataDailyUpdateSheet: function () {
             return dummySheetWithQueue;
         },
@@ -1739,11 +1787,13 @@ gasc.model.PresParam = function (obj) {
         },
         apiFunctionCore: apiMock,
         activeSpreadsheet: {},
-        activeRange: dummyRangeWithQueryData
+        getActiveRange: function() {
+            return dummyRangeWithQueryData;
+        }
     };
 
     this.basicTest = function () {
-        gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env, dummySheetWithQueue);
+        gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(envWithFormula, dummySheetWithQueue);
         GSUnit.assertEquals(0, dummyLock.lockCount);
         GSUnit.assertNotEquals(dummyRangeWithScheduledData.scheduledData, "");
 
@@ -1756,8 +1806,85 @@ gasc.model.PresParam = function (obj) {
         GSUnit.assertEquals(1, dummyRangeWithScheduledData.numberOfWrites);
     };
 
-
 }).apply(gasc.namespace.createNs("gasc.test.workflow.schedule"));
+
+
+(function (undefined) {
+    var dummyRangeWithScheduledData = new gasc.test.mock.DummyRange();
+
+    var dummySheetWithQueue = {
+        getRange: function (a, b) {
+            return dummyRangeWithScheduledData;
+        },
+        getLastRow: function () {
+            return 1;
+        },
+        insertRowsBefore: function () {
+        }
+    };
+
+
+    var dummySheetWithQuery = {
+        getRange: function (a, b) {
+            return dummyRangeWithQueryData;
+        },
+        getName: function () {
+            return "dummySheetWithQuery";
+        }
+    };
+
+    var dummyLock = new gasc.test.mock.DummyLock();
+
+    var dummyRangeWithQueryData = new gasc.test.mock.DummyRange();
+    dummyRangeWithQueryData.getNumRows = function () {
+        return 1;
+    };
+    dummyRangeWithQueryData.getNumColumns = function () {
+        return 1;
+    };
+    dummyRangeWithQueryData.getRow = function () {
+        return 1;
+    };
+    dummyRangeWithQueryData.getColumn = function () {
+        return 1;
+    };
+    dummyRangeWithQueryData.getValue = function () {
+        // some unvalid value
+        return "some unvalid value";
+    };
+    dummyRangeWithQueryData.getSheet = function () {
+        return dummySheetWithQuery;
+    };
+
+
+    var apiMock = function (a, b, c, d, e) {
+        GSUnit.fail();
+    };
+
+    var envWithoutFormula = {
+        getScheduledDataDailyUpdateSheet: function () {
+            return dummySheetWithQueue;
+        },
+        getLock: function () {
+            return dummyLock;
+        },
+        apiFunctionCore: apiMock,
+        activeSpreadsheet: {},
+        getActiveRange: function () {
+            return dummyRangeWithQueryData;
+        }
+    };
+
+    this.cellContainsNoFormula = function () {
+        gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(envWithoutFormula, dummySheetWithQueue);
+        GSUnit.assertEquals(0, dummyLock.lockCount);
+
+        GSUnit.assertEquals(0, dummyRangeWithQueryData.numberOfWrites);
+        GSUnit.assertEquals(0, dummyRangeWithScheduledData.numberOfWrites);
+    };
+
+
+}).apply(gasc.namespace.createNs("gasc.test.workflow.schedule.noValidData"));
 
 
 //##################################################
@@ -1768,9 +1895,12 @@ gasc.model.PresParam = function (obj) {
 
     var dummyRangeWithScheduledData = {
         numberOfWrites: 0,
-        setValue: function (data) {
+        setValues: function (data) {
             this.scheduledData = data;
             this.numberOfWrites++;
+        },
+        setValue : function(data) {
+            this.setValues(data);
         },
         getNumRows: function () {
             return 1;
@@ -1823,9 +1953,12 @@ gasc.model.PresParam = function (obj) {
 
     var dummyRangeWithQueryData = {
         numberOfWrites: 0,
-        setValue: function (data) {
+        setValues: function (data) {
             this.scheduledData = data;
             this.numberOfWrites++;
+        },
+        setValue : function(data) {
+            this.setValues(data);
         },
         getNumRows: function () {
             return 1;
@@ -1876,7 +2009,9 @@ gasc.model.PresParam = function (obj) {
                 GSUnit.fail();
             }
         },
-        activeRange: dummyRangeWithQueryData
+        getActiveRange: function () {
+            return dummyRangeWithQueryData;
+        }
     };
 
 
