@@ -6,7 +6,12 @@ function runTests() {
     var devLogSheet = "1CTqDO_-F1tIuZrEBWe16bN65x52cV86eo2HlHfFl_aA";
     // https://docs.google.com/spreadsheets/d/1CTqDO_-F1tIuZrEBWe16bN65x52cV86eo2HlHfFl_aA/edit#gid=1854668337
     gasc.logger.useBetterLogOnExternalSpreadsheet(devLogSheet);
-
+    var loggingLevel = {
+        logFine : true,
+        logInfo : true,
+        logSevere : true
+    };
+    gasc.logger.setLoggingLevel(loggingLevel);
     gasc.test.runAllTests();
 }
 
@@ -248,10 +253,11 @@ gasc.namespace.createNs = function (namespace) {
     };
 
     function log(data) {
-        if (!loggerIsInitialized) {
+        if (!loggerIsInitialized()) {
             initLogger();
+            // changes the result of loggerIsInitialized
         }
-        if (!loggerIsInitialized) {
+        if (loggerIsInitialized()) {
             this.logInterface.log(data);
         }
     }
@@ -1162,7 +1168,6 @@ gasc.model.PresParam = function (obj) {
 
         gasc.test.namespaceCreator.createNsTestWithoutHierarchy();
         gasc.test.namespaceCreator.createNsTestWithHierarchy();
-        gasc.test.logger.loggerTests();
         gasc.test.customFunction.analyticsBTest();
         gasc.test.customFunction.analyticsBShowHeadersInResultFalse();
         gasc.test.customFunction.analyticsBShowHeadersInResultTrue();
@@ -1248,33 +1253,6 @@ gasc.model.PresParam = function (obj) {
     };
 
 }).apply(gasc.namespace.createNs("gasc.test.mock"));
-
-
-// ##################################################
-// ##############  gasc.test.logger #################
-// ##################################################
-
-(function (undefined) {
-
-    this.loggerTests = function () {
-        gasc.logger.info("Test gasc.test.logger.loggerTest started");
-        var testLogInterface = {
-            log: function (data) {
-                GSUnit.assertContains(" Stack: ", data);
-            }
-        };
-
-        var originalInterface = gasc.logger.logInterface;
-
-        gasc.logger.logInterface = testLogInterface;
-        gasc.logger.logError("test error string");
-
-        // reset logger to use normal logInterface
-        gasc.logger.logInterface = originalInterface;
-
-    }
-
-}).apply(gasc.namespace.createNs("gasc.test.logger"));
 
 
 // ##################################################
