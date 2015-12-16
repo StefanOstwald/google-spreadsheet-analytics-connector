@@ -1,3 +1,10 @@
+var productionLoggingLevel = {
+    logFine: false,
+    logInfo: false,
+    logSevere: true
+};
+
+
 // ##################################################
 // ############## public ############################
 // ##################################################
@@ -7,9 +14,9 @@ function runTests() {
     // https://docs.google.com/spreadsheets/d/1CTqDO_-F1tIuZrEBWe16bN65x52cV86eo2HlHfFl_aA/edit#gid=1854668337
     gasc.logger.useBetterLogOnExternalSpreadsheet(devLogSheet);
     var loggingLevel = {
-        logFine : true,
-        logInfo : true,
-        logSevere : true
+        logFine: true,
+        logInfo: true,
+        logSevere: true
     };
     gasc.logger.setLoggingLevel(loggingLevel);
     gasc.test.runAllTests();
@@ -30,7 +37,7 @@ function onOpen() {
         .addSubMenu(ui.createMenu('debug')
             .addItem('Schedule queries in active range to queue', 'scheduleActiveRangeForDailyUpdate')
             .addItem('trigger starting point', 'triggerStartingPointForProduction')
-            .addItem('delete all trigger', 'deleteAllTriggersOnProduction')
+            .addItem('reset unaccessable environment', 'environmentReset')
             .addItem('setup hourly trigger', 'setupHourlyTriggerOnProduction')
         )
         .addToUi();
@@ -63,11 +70,15 @@ function scheduleActiveRangeForDailyUpdate() {
     gasc.workflow.schedule.scheduleQueriesInActiveRangeToSheet(env, env.getScheduledDataDailyUpdateSheet());
 }
 
-function deleteAllTriggersOnProduction() {
+function environmentReset() {
     gasc.logger.useBetterLogOnOpenSpreadsheet();
     var env = gasc.env.generateProductionEnvironment();
     gasc.logger.setLoggingLevel(env.loggingLevel);
-    gasc.logger.info("deleteAllTriggersOnProduction started");
+    gasc.logger.info("environmentReset started");
+    gasc.logger.info("deleting lock");
+    gasc.spreadsheet.lock.release(env.getLock());
+    gasc.logger.info("deleting trigger");
+    // FIXME create an exception
     gasc.workflow.trigger.deleteAllTriggers(env);
 }
 
@@ -190,21 +201,21 @@ gasc.namespace.createNs = function (namespace) {
 (function (undefined) {
 
     var loggingLevel = {
-        logFine : true,
-        logInfo : true,
-        logSevere : true
+        logFine: true,
+        logInfo: true,
+        logSevere: true
     };
 
     var loggerConfig = {
-        loggerSelection : "",
-        externalLoggingSpreadsheetId : ""
+        loggerSelection: "",
+        externalLoggingSpreadsheetId: ""
     };
 
-    function loggerIsInitialized () {
+    function loggerIsInitialized() {
         return !!this.logInterface;
     }
 
-    this.setLoggingLevel = function(newLoggingLevel) {
+    this.setLoggingLevel = function (newLoggingLevel) {
         loggingLevel = newLoggingLevel;
     };
 
@@ -576,46 +587,22 @@ gasc.model.PresParam = function (obj) {
 
 (function (undefined) {
 
-    // TODO delete me
-    /**
-     * The function tests if the jsonString is valid.
-     * @param jsonString The string which shall be checked and parsed
-     * @returns {*} return false if json is not valid else the parsed json
-     */
-    this.tryParseJSON = function (jsonString) {
-        //Source http://stackoverflow.com/questions/3710204/how-to-check-if-a-string-is-a-valid-json-string-in-javascript-without-using-try
-        try {
-            var o = JSON.parse(jsonString);
-
-            // Handle non-exception-throwing cases:
-            // Neither JSON.parse(false) or JSON.parse(1234) throw errors, hence the type-checking,
-            // but... JSON.parse(null) returns 'null', and typeof null === "object",
-            // so we must check for that, too.
-            if (o && typeof o === "object" && o !== null && o !== "undefined") {
-                return o;
-            }
-        }
-        catch (e) {
-        }
-
-        return false;
-    };
-
-    this.dateIsBeforeTodayMidnightOrUndefined = function (date) {
-        // call setHours to take the time out of the comparison
-        if (!!date) {
-            // Get today's date
-            var now = new Date();
-            if (date <= now.setHours(0, 0, 0, 0)) {
-                gasc.logger.info("querySet was executed after today midnight.");
-                return true;
-            } else {
-                gasc.logger.info("querySet was not executed after today midnight.");
-                return false;
-            }
+    this.dateIsBeforeTodayMidnight = function (dateInput) {
+        // Get today's date
+        var now = new Date();
+        var dateVerfied;
+        if (dateInput instanceof Date) {
+            dateVerfied = dateInput;
         } else {
-            gasc.logger.info("querySet was never executed. Attribute lastExecuted is falsely.");
+            dateVerfied = new Date(dateInput);
+        }
+
+        if (dateVerfied <= now.setHours(0, 0, 0, 0)) {
+            gasc.logger.info("date is before today midnight.");
             return true;
+        } else {
+            gasc.logger.info("date is after today midnight.");
+            return false;
         }
     };
 
@@ -643,22 +630,18 @@ gasc.model.PresParam = function (obj) {
                     return LockService.getScriptLock();
                 },
                 getActiveRange: function () {
-                    gasc.logger.info("retrieve activeRange");
+                    // gasc.logger.info("retrieve activeRange");
                     return SpreadsheetApp.getActiveRange();
                 }
             };
             this.env.apiFunctionCore = Analytics.Data.Ga.get;
             this.env.activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-            gasc.logger.info("activeSpreadsheet url: " + this.env.activeSpreadsheet.getUrl());
-            gasc.logger.info("initializing  production environment successfull");
+            // gasc.logger.info("activeSpreadsheet url: " + this.env.activeSpreadsheet.getUrl());
+            // gasc.logger.info("initializing  production environment successfull");
             this.env.scheduledDataDailyUpdateSheetName = "daily_updates";
             this.env.scriptApp = ScriptApp;
             this.env.triggerStartingPointFunctionName = 'triggerStartingPointForProduction';
-            this.env.loggingLevel = {
-                logFine : false,
-                logInfo : false,
-                logSevere : true
-            }
+            this.env.loggingLevel = productionLoggingLevel;
         }
 
         return this.env;
@@ -770,7 +753,7 @@ gasc.model.PresParam = function (obj) {
 
     this.triggerStartingPoint = function (env, queueSheet) {
         gasc.logger.info("trigger function started");
-        gasc.logger.fine("queueSheet is defined: "+ !!queueSheet);
+        gasc.logger.fine("queueSheet is defined: " + !!queueSheet);
 
         gasc.spreadsheet.lock.wait(env.getLock());
         var queue = gasc.spreadsheet.retrieveEntireQueue(queueSheet);
@@ -801,7 +784,11 @@ gasc.model.PresParam = function (obj) {
         gasc.spreadsheet.lock.release(env.getLock());
 
         function queueElementShouldBeCalculated(queueElement) {
-            return gasc.util.dateIsBeforeTodayMidnightOrUndefined(iQueueElement.lastExecuted);
+            if (!queueElement.lastExecuted) {
+                gasc.logger.info("querySet was never executed. Attribute lastExecuted is falsely.");
+                return true;
+            }
+            return gasc.util.dateIsBeforeTodayMidnight(queueElement.lastExecuted);
         }
 
         function saveQueueElementOnSheet(queueElement, scheduleSheet) {
@@ -822,7 +809,6 @@ gasc.model.PresParam = function (obj) {
 }).apply(gasc.namespace.createNs("gasc.workflow.executeDailyQueries"));
 
 
-
 // ##################################################
 // ############  gasc.workflow.trigger  #############
 // ##################################################
@@ -838,10 +824,10 @@ gasc.model.PresParam = function (obj) {
         var allTriggers = env.scriptApp.getProjectTriggers();
         var i;
         for (i = 0; i < allTriggers.length; i++) {
-            gasc.logger.fine("starting to delete trigger "+ i);
+            gasc.logger.fine("starting to delete trigger " + i);
             if (triggerIsOfThisScript(allTriggers[i])) {
 
-                gasc.logger.fine("sleeping for "+MS_BETWEEN_SCRIPTAPP_CALLS+"ms to avoid too many scriptapp calls.");
+                gasc.logger.fine("sleeping for " + MS_BETWEEN_SCRIPTAPP_CALLS + "ms to avoid too many scriptapp calls.");
                 Utilities.sleep(MS_BETWEEN_SCRIPTAPP_CALLS);
 
                 ScriptApp.deleteTrigger(allTriggers[i]);
@@ -1183,7 +1169,6 @@ gasc.model.PresParam = function (obj) {
         gasc.test.model.QuerySet.getOutputStartColumnTestResultsBelow();
         gasc.test.model.QuerySet.getOutputStartColumnTestResultsRight();
         gasc.test.model.QueryParam.genOptParamListTest();
-        gasc.test.util.tryParseJSONTestValid();
         gasc.test.analytics.executeQueryAndRetryIfUnsuccessfullSuccessfullQueryTest();
         gasc.test.view.generateOutputArrayTestHeadlineNoDimensionAllOf0();
         gasc.test.view.generateOutputArrayTestHeadlineNoDimensionAllOf1();
@@ -1193,17 +1178,15 @@ gasc.model.PresParam = function (obj) {
         gasc.test.view.generateOutputArrayTestHeadlineYesDimensionAllOf2();
         gasc.test.view.transform1dArrayTo2dArrayWithDatapointsBelowEachOther();
         gasc.test.workflow.schedule.basicTest();
-        gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfYesterday();
-        gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfEarlierToday();
-        gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfTomorrow();
-        gasc.test.util.dateIsBeforeTodayMidnightOrUndefined.testInputOfUndefined();
+        gasc.test.util.dateIsBeforeTodayMidnight.testInputOfYesterday();
+        gasc.test.util.dateIsBeforeTodayMidnight.testInputOfEarlierToday();
+        gasc.test.util.dateIsBeforeTodayMidnight.testInputOfTomorrow();
         gasc.test.workflow.executeDailyQueries.normalExecution();
         gasc.test.analytics.analyticsAPITest(this.analyticsIdForTesting);
 
 
         // the following tests contain intentionally triggered exceptions
         // gasc.test.workflow.schedule.noValidData.cellContainsNoFormula();
-        // gasc.test.util.tryParseJSONTestInvalid();
     };
 
 }).apply(gasc.namespace.createNs("gasc.test"));
@@ -1253,40 +1236,6 @@ gasc.model.PresParam = function (obj) {
     };
 
 }).apply(gasc.namespace.createNs("gasc.test.mock"));
-
-
-// ##################################################
-// ##############  gasc.test.util #################
-// ##################################################
-
-(function (undefined) {
-
-    // TODO Is test namespace good or is a seperate test namespace in the namespace it verifies a better option
-    this.tryParseJSONTestInvalid = function () {
-        //TODO refactor into seperate functions?
-        var wrongJSON1 = "asdf";
-        GSUnit.assertEvaluatesToFalse(gasc.util.tryParseJSON(wrongJSON1));
-
-        var wrongJSON2 = 12;
-        GSUnit.assertEvaluatesToFalse(gasc.util.tryParseJSON(wrongJSON2));
-
-        var wrongJSON3 = "";
-        GSUnit.assertEvaluatesToFalse(gasc.util.tryParseJSON(wrongJSON3));
-
-        var wrongJSON4 = null;
-        GSUnit.assertEvaluatesToFalse(gasc.util.tryParseJSON(wrongJSON4));
-
-        var wrongJSON5 = "undefined";
-        GSUnit.assertEvaluatesToFalse(gasc.util.tryParseJSON(wrongJSON5));
-
-    };
-
-    this.tryParseJSONTestValid = function () {
-        var validJSON1 = "{\"employees\":[{\"firstName\":\"John\",\"lastName\":\"Doe\"},{\"firstName\":\"Anna\",\"lastName\":\"Smith\"},{\"firstName\":\"Peter\",\"lastName\":\"Jones\"}]}";
-        GSUnit.assertEvaluatesToTrue(gasc.util.tryParseJSON(validJSON1));
-    };
-
-}).apply(gasc.namespace.createNs("gasc.test.util"));
 
 
 // ##################################################
@@ -1765,7 +1714,7 @@ gasc.model.PresParam = function (obj) {
         },
         apiFunctionCore: apiMock,
         activeSpreadsheet: {},
-        getActiveRange: function() {
+        getActiveRange: function () {
             return dummyRangeWithQueryData;
         }
     };
@@ -1877,7 +1826,7 @@ gasc.model.PresParam = function (obj) {
             this.scheduledData = data;
             this.numberOfWrites++;
         },
-        setValue : function(data) {
+        setValue: function (data) {
             this.setValues(data);
         },
         getNumRows: function () {
@@ -1935,7 +1884,7 @@ gasc.model.PresParam = function (obj) {
             this.scheduledData = data;
             this.numberOfWrites++;
         },
-        setValue : function(data) {
+        setValue: function (data) {
             this.setValues(data);
         },
         getNumRows: function () {
@@ -2006,7 +1955,7 @@ gasc.model.PresParam = function (obj) {
 
 
 //##################################################
-//####  gasc.test.util.dateIsBeforeTodayMidnightOrUndefined #####
+//####  gasc.test.util.dateIsBeforeTodayMidnight #####
 //##################################################
 
 (function (undefined) {
@@ -2015,7 +1964,7 @@ gasc.model.PresParam = function (obj) {
         var yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
 
-        var result = gasc.util.dateIsBeforeTodayMidnightOrUndefined(yesterday);
+        var result = gasc.util.dateIsBeforeTodayMidnight(yesterday);
         GSUnit.assertTrue(result);
     };
 
@@ -2023,20 +1972,15 @@ gasc.model.PresParam = function (obj) {
         var oneHourBefore = new Date();
         oneHourBefore.setHours((oneHourBefore.getHours() - 1));
 
-        var result = gasc.util.dateIsBeforeTodayMidnightOrUndefined(oneHourBefore);
+        var result = gasc.util.dateIsBeforeTodayMidnight(oneHourBefore);
         GSUnit.assertFalse(result);
-    };
-
-    this.testInputOfUndefined = function () {
-        var result = gasc.util.dateIsBeforeTodayMidnightOrUndefined(undefined);
-        GSUnit.assertTrue(result);
     };
 
     this.testInputOfTomorrow = function () {
         var tomorrow = new Date();
         tomorrow.setDate((tomorrow.getDate() + 1));
-        var result = gasc.util.dateIsBeforeTodayMidnightOrUndefined(tomorrow);
+        var result = gasc.util.dateIsBeforeTodayMidnight(tomorrow);
         GSUnit.assertFalse(result);
     };
 
-}).apply(gasc.namespace.createNs("gasc.test.util.dateIsBeforeTodayMidnightOrUndefined"));
+}).apply(gasc.namespace.createNs("gasc.test.util.dateIsBeforeTodayMidnight"));
